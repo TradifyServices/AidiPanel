@@ -12,9 +12,10 @@
  * Everything written here is a build artifact that is committed and deployed.
  * node_modules is dev-only and never deployed.
  */
-import { existsSync, mkdirSync, copyFileSync, readFileSync, writeFileSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, copyFileSync, readFileSync, writeFileSync, statSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { build } from 'esbuild';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..');               // panel-app/
@@ -64,27 +65,52 @@ log.push(`write   fonts.css (${faces.length} @font-face rules)`);
 // ── 2. Vendored runtime JS (Alpine, ApexCharts) ────────────────────────────
 const vendor = join(PUB, 'vendor');
 ensure(vendor);
+const apexMetadata = JSON.parse(readFileSync(join(NM, 'apexcharts', 'package.json'), 'utf8'));
+if (apexMetadata.version !== '4.7.0' || apexMetadata.license !== 'MIT') {
+  throw new Error('ApexCharts upgrades require an explicit redistribution-license review');
+}
 log.push(`vendor alpine.min.js      ${kb(copy(join(NM, 'alpinejs', 'dist', 'cdn.min.js'), join(vendor, 'alpine.min.js')))}`);
 log.push(`vendor apexcharts.min.js  ${kb(copy(join(NM, 'apexcharts', 'dist', 'apexcharts.min.js'), join(vendor, 'apexcharts.min.js')))}`);
 
 // QR generator (Kazuhiko Arase, MIT) for the 2FA enrollment QR — rendered client-side
 // from the otpauth:// URI. UMD: loaded as a plain <script>, it exposes a global qrcode().
-log.push(`vendor qrcode.min.js      ${kb(copy(join(NM, 'qrcode-generator', 'qrcode.js'), join(vendor, 'qrcode.min.js')))}`);
+log.push(`vendor qrcode.min.js      ${kb(copy(join(NM, 'qrcode-generator', 'dist', 'qrcode.js'), join(vendor, 'qrcode.min.js')))}`);
 
-// CodeMirror 5 for the file-manager editor (syntax highlight + line numbers).
-// Bundled to ONE js (core + curated modes in dependency order) so the Files tab
-// fetches two static assets — no per-mode requests. Lazy-loaded on first edit.
-const cmDir   = join(NM, 'codemirror');
-const cmModes = ['xml', 'javascript', 'css', 'clike', 'htmlmixed', 'php',
-  'markdown', 'yaml', 'shell', 'python', 'sql', 'nginx', 'dockerfile', 'properties'];
-let cmBundle = readFileSync(join(cmDir, 'lib', 'codemirror.js'), 'utf8');
-for (const m of cmModes) cmBundle += '\n;' + readFileSync(join(cmDir, 'mode', m, m + '.js'), 'utf8');
-cmBundle += '\n;' + readFileSync(join(cmDir, 'mode', 'meta.js'), 'utf8');
-writeFileSync(join(vendor, 'codemirror.js'), cmBundle);
-log.push(`vendor codemirror.js      ${kb(Buffer.byteLength(cmBundle))} (core + ${cmModes.length} modes + meta)`);
-const cmCss = readFileSync(join(cmDir, 'lib', 'codemirror.css'), 'utf8') + '\n' + readFileSync(join(cmDir, 'theme', 'dracula.css'), 'utf8');
-writeFileSync(join(vendor, 'codemirror.css'), cmCss);
-log.push(`vendor codemirror.css     ${kb(Buffer.byteLength(cmCss))} (core + dracula theme)`);
+const editorBuild = await build({
+  absWorkingDir: ROOT,
+  entryPoints: ['build/editor.mjs'],
+  outfile: join(vendor, 'codemirror.js'),
+  bundle: true,
+  format: 'iife',
+  globalName: 'AidiEditor',
+  target: ['es2020'],
+  supported: { 'template-literal': false },
+  minify: true,
+  legalComments: 'external',
+  metafile: true,
+});
+rmSync(join(vendor, 'codemirror.css'), { force: true });
+log.push(`vendor codemirror.js      ${kb(statSync(join(vendor, 'codemirror.js')).size)} (CodeMirror 6 + bundled languages)`);
+
+const packages = new Set(['alpinejs', 'apexcharts', 'qrcode-generator', '@tabler/icons',
+  ...Object.keys(apexMetadata.dependencies),
+  ...FONTS.map(font => '@fontsource/' + font.pkg)]);
+for (const input of Object.keys(editorBuild.metafile.inputs)) {
+  if (!input.includes('node_modules/')) continue;
+  const parts = input.split('node_modules/').pop().split('/');
+  packages.add(parts[0].startsWith('@') ? parts.slice(0, 2).join('/') : parts[0]);
+}
+const notices = [];
+for (const packageName of [...packages].sort()) {
+  const directory = join(NM, packageName);
+  const metadata = JSON.parse(readFileSync(join(directory, 'package.json'), 'utf8'));
+  const licensePath = ['LICENSE', 'LICENSE.md', 'LICENSE.txt', 'LICENSE-MIT', 'license', 'license.txt', 'OFL.txt']
+    .map(name => join(directory, name))
+    .concat(join(HERE, 'licenses', `${packageName.replaceAll('/', '-')}-${metadata.version}.txt`)).find(existsSync);
+  if (!licensePath) throw new Error('Missing vendored license: ' + packageName);
+  notices.push(`${metadata.name} ${metadata.version} (${metadata.license})\n${readFileSync(licensePath, 'utf8').trim()}`);
+}
+writeFileSync(join(vendor, 'THIRD-PARTY-LICENSES.txt'), notices.join('\n\n' + '='.repeat(72) + '\n\n') + '\n');
 
 // Icons are no longer a webfont: the panel renders inline local SVGs via the
 // icon() helper, synced from @tabler/icons by build/sync-icons.mjs (`npm run icons`).

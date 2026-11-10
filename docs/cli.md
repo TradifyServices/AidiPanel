@@ -153,6 +153,32 @@ destinations for AWS S3, Wasabi, or DigitalOcean Spaces, tests credentials befor
 activation, and runs backups across all sites. Secrets are never returned by the
 status command.
 
+Each run creates and uploads a new **full** archive, not an incremental or
+deduplicated snapshot. Remote retention is five archives per site. Provider and
+endpoint validation currently permits AWS S3, Wasabi, and DigitalOcean Spaces;
+arbitrary S3-compatible endpoints, SFTP/SSH storage boxes, and configurable
+local-folder destinations are not supported. Archives are not client-side
+encrypted, and restoration is a manual operation. Docker volumes and running
+container state are not automatically included.
+
+## Docker
+
+Docker must have been selected during setup (`--with-docker`). Rootful commands
+omit `--domain`; rootless commands resolve the managed site from its domain.
+
+```bash
+sudo aidipanel docker:status
+sudo aidipanel docker:enable --domain example.com
+sudo aidipanel docker:list --domain example.com
+sudo aidipanel docker:disable --domain example.com
+```
+
+`docker:create` accepts a JSON specification on stdin; `docker:start`,
+`docker:stop`, `docker:restart`, `docker:remove`, and `docker:logs` accept
+`{"id":"<managed-container-id>"}` on stdin. See [Docker containers](docker.md).
+Site volume entries use `{"name":"app-data","target":"/data","readonly":false}`;
+host bind sources are available only for administrator-managed rootful containers.
+
 ---
 
 ## Database Management

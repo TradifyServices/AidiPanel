@@ -2,6 +2,32 @@
    Emits Tailwind's preflight + the utility classes scanned from the PHP views.
    The custom component layer lives in public/assets/app.css and loads after the
    generated public/assets/tailwind.css. */
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss" source(none);
+@config "../../tailwind.config.js";
+@source "../../app";
+@source "../../public/*.php";
+
+@layer base {
+  *, ::after, ::before, ::backdrop, ::file-selector-button {
+    border-color: var(--color-gray-200, currentColor);
+  }
+  button, [role="button"] {
+    cursor: pointer;
+  }
+}
+
+@theme {
+  --radius-sm: 0.125rem;
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+}
+
+@utility rounded {
+  border-radius: 0.25rem;
+}
+
+@layer utilities {
+  .outline-none {
+    outline: 2px solid transparent;
+    outline-offset: 2px;
+  }
+}

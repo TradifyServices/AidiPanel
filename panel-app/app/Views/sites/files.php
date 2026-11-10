@@ -12,7 +12,6 @@ $cmVer   = @filemtime(PUBLIC_ROOT . '/assets/vendor/codemirror.js') ?: PANEL_VER
   <div class="card px-5 py-12 text-center text-sm text-zinc-500"><?= e(t('site.files.not_ready')) ?></div>
 <?php else: ?>
 <style>
-  .fm-cm-host .CodeMirror { height: 100%; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 13px; }
   .fm-scroll::-webkit-scrollbar { width: 10px; height: 10px; }
   .fm-scroll::-webkit-scrollbar-thumb { background: #d4d4d8; border-radius: 6px; }
 </style>
@@ -344,7 +343,6 @@ $cmVer   = @filemtime(PUBLIC_ROOT . '/assets/vendor/codemirror.js') ?: PANEL_VER
 <script>
 (function () {
   const CM_JS  = <?= json_encode('/assets/vendor/codemirror.js?v=' . $cmVer, JSON_HEX_TAG) ?>;
-  const CM_CSS = <?= json_encode('/assets/vendor/codemirror.css?v=' . $cmVer, JSON_HEX_TAG) ?>;
   const FILE_ICONS = {
     folder: <?= json_encode(icon('folder'), JSON_HEX_TAG) ?>,
     file:   <?= json_encode(icon('file'), JSON_HEX_TAG) ?>,
@@ -376,64 +374,16 @@ $cmVer   = @filemtime(PUBLIC_ROOT . '/assets/vendor/codemirror.js') ?: PANEL_VER
     let cancelled = false;     // set by cancelUpload() to stop the chunk loop
 
     function ensureCM() {
-      if (window.CodeMirror) return Promise.resolve();
+      if (window.AidiEditor) return Promise.resolve();
       if (cmLoading) return cmLoading;
       cmLoading = new Promise(function (resolve, reject) {
-        // Wait for the stylesheet too — creating the editor before its CSS lands
-        // is what causes the blank/colourless/overlapping-gutter render.
-        const cssReady = new Promise(function (res) {
-          if (document.getElementById('cm-css')) return res();
-          const l = document.createElement('link');
-          l.id = 'cm-css'; l.rel = 'stylesheet'; l.href = CM_CSS;
-          l.onload = res; l.onerror = res;
-          document.head.appendChild(l);
-        });
-        const s = document.createElement('script');
-        s.src = CM_JS;
-        s.onload = function () { cssReady.then(resolve); };
-        s.onerror = function () { reject(new Error('CodeMirror failed to load')); };
-        document.head.appendChild(s);
+        const script = document.createElement('script');
+        script.src = CM_JS;
+        script.onload = resolve;
+        script.onerror = function () { cmLoading = null; script.remove(); reject(new Error('CodeMirror failed to load')); };
+        document.head.appendChild(script);
       });
       return cmLoading;
-    }
-
-    // True only for a mode/MIME that's actually loaded in this bundle.
-    function modeRegistered(m) {
-      const C = window.CodeMirror;
-      return !!(C && ((C.mimeModes && C.mimeModes[m]) || (C.modes && C.modes[m])));
-    }
-    // Direct extension → registered mode-NAME map. Used before CM's meta lookup so
-    // highlighting never depends on findModeByFileName behaving in the browser.
-    // Every value here is a mode bundled by build/vendor-assets.mjs.
-    const EXT_MODE = {
-      php: 'php', phtml: 'php', php3: 'php', php4: 'php', php5: 'php', php7: 'php',
-      js: 'javascript', mjs: 'javascript', cjs: 'javascript', jsx: 'javascript', ts: 'javascript', tsx: 'javascript', json: 'javascript',
-      css: 'css', scss: 'css', sass: 'css', less: 'css',
-      html: 'htmlmixed', htm: 'htmlmixed', vue: 'htmlmixed', twig: 'htmlmixed', blade: 'htmlmixed',
-      xml: 'xml', svg: 'xml', xsl: 'xml', rss: 'xml',
-      yml: 'yaml', yaml: 'yaml', md: 'markdown', markdown: 'markdown', sql: 'sql',
-      sh: 'shell', bash: 'shell', zsh: 'shell', py: 'python',
-      c: 'clike', h: 'clike', cpp: 'clike', cc: 'clike', hpp: 'clike', java: 'clike', cs: 'clike',
-      conf: 'nginx', nginx: 'nginx', ini: 'properties', toml: 'properties', env: 'properties', dockerfile: 'dockerfile',
-    };
-    function pickMode(name) {
-      const lower = name.toLowerCase();
-      if (lower === '.env' || lower.startsWith('.env.')) return 'properties';
-      const byName = {
-        '.profile': 'shell', '.bashrc': 'shell', '.bash_profile': 'shell', '.bash_logout': 'shell',
-        '.zshrc': 'shell', '.zprofile': 'shell', '.zshenv': 'shell', '.kshrc': 'shell',
-        '.gitconfig': 'properties', '.editorconfig': 'properties', '.npmrc': 'properties', 'dockerfile': 'dockerfile',
-      };
-      if (byName[lower]) return byName[lower];
-      const ext = lower.indexOf('.') >= 0 ? lower.split('.').pop() : '';
-      if (EXT_MODE[ext] && modeRegistered(EXT_MODE[ext])) return EXT_MODE[ext];
-      // Fallback: CM meta (try every candidate, use the first that's registered).
-      const info = window.CodeMirror.findModeByFileName ? window.CodeMirror.findModeByFileName(name) : null;
-      if (info) {
-        const cands = (info.mimes || []).concat(info.mime ? [info.mime] : [], info.mode ? [info.mode] : []);
-        for (let i = 0; i < cands.length; i++) if (modeRegistered(cands[i])) return cands[i];
-      }
-      return 'text/plain';
     }
 
     return {
@@ -694,16 +644,13 @@ $cmVer   = @filemtime(PUBLIC_ROOT . '/assets/vendor/codemirror.js') ?: PANEL_VER
         const content = j.data.content;
         try { await ensureCM(); } catch (e) { this.editor.open = false; window.AidiToast('error', 'Editor failed to load.'); return; }
         this.$nextTick(() => {
+          if (cm) cm.destroy();
           this.$refs.cmHost.innerHTML = '';
-          cm = window.CodeMirror(this.$refs.cmHost, {
-            value: content, mode: pickMode(en.name), lineNumbers: true,
-            lineWrapping: false, indentUnit: 2, tabSize: 2, autofocus: true, theme: 'dracula',
+          cm = window.AidiEditor.create(this.$refs.cmHost, {
+            value: content, filename: en.name,
+            onChange: () => { this.editor.dirty = true; },
           });
-          cm.setSize('100%', '100%');
-          this.editor.modeName = (cm.getMode && cm.getMode().name) || 'text';
-          cm.on('change', () => { this.editor.dirty = true; });
-          // Reflow once the modal/flex layout has settled (fixes blank-until-click).
-          setTimeout(function () { if (cm) cm.refresh(); }, 60);
+          this.editor.modeName = cm.modeName;
         });
       },
       async saveEditor() {
@@ -716,7 +663,7 @@ $cmVer   = @filemtime(PUBLIC_ROOT . '/assets/vendor/codemirror.js') ?: PANEL_VER
         window.AidiToast('success', 'Saved.'); this.forceClose(); this.load(this.cwd);
       },
       tryClose() { if (this.editor.dirty) { this.editor.confirmClose = true; } else { this.forceClose(); } },
-      forceClose() { cm = null; if (this.$refs.cmHost) this.$refs.cmHost.innerHTML = ''; this.editor.open = false; this.editor.confirmClose = false; },
+      forceClose() { if (cm) cm.destroy(); cm = null; if (this.$refs.cmHost) this.$refs.cmHost.innerHTML = ''; this.editor.open = false; this.editor.confirmClose = false; },
 
       // ---- keyboard ----
       onKey(ev) {

@@ -6,7 +6,7 @@ AidiPanel is a server control panel for Ubuntu/Debian. It provisions a complete 
 
 | Layer | Software | Role |
 |-------|----------|------|
-| Web server | Nginx (mainline) | Serves sites, terminates TLS, runs FastCGI Cache |
+| Web server | Nginx (official stable repository, distro fallback) | Serves sites, terminates TLS, runs FastCGI Cache |
 | Runtime | PHP-FPM | One pool per site; default version 8.5 |
 | Database | MariaDB / MySQL | Application data |
 | Cache | Redis | Object cache and session storage |

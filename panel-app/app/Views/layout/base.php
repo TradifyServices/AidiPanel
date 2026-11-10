@@ -26,6 +26,7 @@ $adminSections = [
     ['key' => 'logs',     'icon' => 'ti-file-text',      'href' => '/admin/logs',  'admin' => true],
     ['key' => 'web_delivery', 'icon' => 'ti-world',       'href' => '/admin/web-delivery', 'admin' => true],
     ['key' => 'backups',  'icon' => 'ti-database-export','href' => '/admin/backups', 'admin' => true],
+    ['key' => 'docker',   'icon' => 'ti-box',            'href' => '/admin/docker', 'admin' => true],
     ['key' => 'support',  'icon' => 'ti-lifebuoy',       'href' => 'https://github.com/rezzaidr/AidiPanel/issues', 'external' => true],
     ['key' => 'settings', 'icon' => 'ti-settings',       'href' => '/admin/settings', 'admin' => true],
 ];
@@ -215,7 +216,7 @@ $assetVer = static fn (string $p): string => $p . '?v=' . (@filemtime(PUBLIC_ROO
               if (!empty($s['admin']) && empty($_is_admin)) {
                   // Read-only demo: still surface the admin READ sections (the viewer may
                   // browse them), but keep Logs hidden — it can carry IPs/paths.
-                  if (!demo_mode() || $s['key'] === 'logs') { continue; }
+                  if (!demo_mode() || in_array($s['key'], ['logs', 'docker'], true)) { continue; }
               }
               $isSoon = !empty($s['soon']) || empty($s['href']);
               $isExternal = !empty($s['external']);

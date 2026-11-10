@@ -124,7 +124,8 @@ class DashboardController extends BaseController
 
     private function getServicesStatus(): array
     {
-        $services = ['nginx', db_service(), 'redis-server'];
+        $services = ['nginx', db_service()];
+        if ($cacheService = cache_service()) $services[] = $cacheService;
         foreach (php_versions_status() as $ver => $s) {
             if ($s['installed']) $services[] = "php{$ver}-fpm";
         }

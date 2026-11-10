@@ -44,7 +44,7 @@ HELPER=${HELPER//\/usr\/local\/bin\/aidipanel cache:redis-acl/aidipanel_cli cach
 
 run_case() {
   local name="$1" install_redis="$2" dry_run="$3" acl_results="$4"
-  local stubborn_redis="${5:-false}" case_dir="${TMP_ROOT}/${name}"
+  local stubborn_redis="${5:-false}" case_dir="${TMP_ROOT}/${name}" cache_engine="${6:-redis}"
   mkdir -p "$case_dir"
   printf '0\n' > "$case_dir/acl_calls"
   printf '0\n' > "$case_dir/sleeps"
@@ -56,6 +56,7 @@ run_case() {
 
   (
     export INSTALL_REDIS="$install_redis" DRY_RUN="$dry_run" PANEL_LOG="$case_dir/panel.log"
+    export CACHE_ENGINE="$cache_engine" CACHE_SERVICE="${cache_engine}-server"
 
     aidipanel_cli() {
       local calls result
@@ -178,5 +179,11 @@ if grep -Fq 'Redis ACL isolation not enabled' "$INSTALLER"; then
   fail 'installer still permits warning-only ACL failure'
 fi
 pass 'warning-only Redis ACL path is absent'
+
+valkey_failure=$(run_case valkey_failure true false '1 1 1' false valkey)
+assert_value "$valkey_failure/rc" 1 'Valkey ACL failure aborts installer'
+assert_contains "$valkey_failure/events" 'valkey-server' 'Valkey ACL failure stops selected service'
+assert_not_contains "$valkey_failure/events" 'redis-server' 'Valkey failure never touches Redis service'
+assert_contains "$valkey_failure/error" 'Valkey was stopped and disabled' 'Valkey recovery guidance names selected engine'
 
 printf 'installer Redis ACL fail-closed contract passed\n'

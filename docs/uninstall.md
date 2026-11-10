@@ -1,5 +1,12 @@
 # Uninstalling AidiPanel
 
+If optional Docker support was enabled, first stop site runtimes with
+`sudo aidipanel docker:disable --domain example.com` and back up container data.
+Rootful Docker can also contain unrelated workloads; do not blindly remove its
+data directories, subordinate UID/GID mappings, or user lingering. See
+[Docker containers](docker.md#backups-and-removal). If Valkey was selected, its
+package/service is `valkey-server`, not `redis-server`.
+
 AidiPanel provisions a full stack (Nginx, PHP-FPM, a database server, Redis)
 and a control panel. Removal is manual and deliberate. Read this fully before
 running anything.

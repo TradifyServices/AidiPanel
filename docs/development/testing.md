@@ -15,6 +15,9 @@ bash -n panel-app/deploy-panel.sh
 # Installer unit tests
 bash tests/unit/installer_archive_test.sh
 
+# Docker helper contracts (no Docker daemon or host provisioning)
+python3 -m unittest discover -s tests/unit -p '*_test.py'
+
 # Bash lint (optional)
 shellcheck -S warning install.sh aidipanel
 
@@ -47,6 +50,22 @@ sudo bash install.sh --port 8443 --db-engine mariadb123
 - Edit a vhost with a valid config (reload succeeds) and an invalid one (automatic rollback).
 - Create a database, back it up, delete it.
 - Confirm a site's PHP runs as its own user and cannot read another site's files.
+- Exercise Redis, Valkey, and no-cache selections on separate fresh machines.
+- Install with `--no-docker` and confirm no Docker repository/package/service is created.
+- Install with `--with-docker`; enable a site's rootless runtime, create a test
+  container, verify CPU/memory/PID limits and localhost-only published ports.
+- Confirm an assigned client cannot access rootful Docker or another site's IDs.
+- Confirm the runtime UID differs from the PHP/SFTP UID, and site processes
+  cannot connect to the runtime socket or traverse its private home.
+- Create/reuse a named site volume and confirm host bind sources and unverified
+  volume labels/driver options are refused. Declare named volumes for image
+  `VOLUME` paths; unscoped implicit anonymous volumes are not accepted.
+- Disable without purge, verify lingering and the runtime manager stop, then
+  reenable and confirm persisted volume data remains. Check legacy same-UID
+  records are refused without modifying the old daemon or data.
+- Reboot and verify rootless user services restart without enabling SSH login.
+- Delete/purge a test site and confirm its runtime stops while unrelated rootful
+  containers and ordinary keep-home data survive.
 
 ## Notes
 

@@ -46,6 +46,7 @@ node_modules/
 panel-app/node_modules/
 
 # Build artifacts
+__pycache__/
 *.tar.gz
 *.zip
 dist/

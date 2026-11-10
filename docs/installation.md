@@ -105,7 +105,10 @@ sudo bash install.sh [OPTIONS]
   --port PORT           Panel HTTPS port (default: 8443)
   --db-engine ENGINE    Database engine (default: mariadb123)
   --db-root-pass PASS   Set DB root password non-interactively
-  --no-redis            Skip Redis installation
+  --cache-engine ENGINE Object cache: redis, valkey, or none
+  --no-redis            Compatibility alias for --cache-engine none
+  --with-docker         Install Docker and rootless prerequisites
+  --no-docker           Skip Docker installation (unattended default)
   --dry-run             Simulate install without making changes
 ```
 
@@ -120,7 +123,21 @@ sudo bash install.sh --db-engine mysql84
 
 # Without Redis
 sudo bash install.sh --no-redis
+
+# Valkey with optional Docker support
+sudo bash install.sh --cache-engine valkey --with-docker
 ```
+
+Interactive setup offers the cache-engine and Docker choices unless their flags
+are supplied. Without a controlling terminal, Redis remains the cache default and
+Docker is skipped. Conflicting selections are rejected. Docker's rootful runtime
+is administrator-only; rootless daemons are enabled per site on demand. See
+[Docker containers](docker.md) for prerequisites and permission boundaries.
+
+Valkey package availability depends on the distribution's enabled signed
+repositories. An unavailable selection fails before provisioning instead of
+silently installing Redis or an unsigned binary. Cache-engine switching on an
+existing server is not an automatic data-migration feature.
 
 ---
 

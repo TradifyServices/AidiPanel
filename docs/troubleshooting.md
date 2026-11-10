@@ -1,5 +1,26 @@
 # Troubleshooting
 
+## Optional Docker and Valkey
+
+If Docker was skipped, container pages are unavailable until it is installed and
+enabled in the root-owned panel configuration. Do not rerun the full installer on
+an existing production stack just to add Docker. Follow the official signed
+Docker repository instructions for the host distribution, install the rootless
+prerequisites listed in [Docker containers](docker.md), start the system daemon,
+and set `INSTALL_DOCKER=true` in `/opt/aidipanel/config/panel.conf` as root.
+Administrators must then enable each site's rootless runtime explicitly.
+
+If rootless creation reports missing resource controllers, check cgroup v2 and
+systemd user-service delegation; do not bypass the checks or grant the site user
+access to `/var/run/docker.sock`. User namespaces/AppArmor and subordinate UID/GID
+ranges also need to be usable. Test a reboot before relying on the user daemon.
+
+For a Valkey installation, inspect `valkey-server` rather than `redis-server`
+with `systemctl status` and use `valkey-cli` for direct diagnostics. Existing
+`aidipanel cache:redis-*` commands retain their Redis-compatible names and route
+to the configured engine. Never manually disable per-site ACLs to work around an
+installation failure.
+
 ## Install / panel
 
 **Port 8443 already in use**

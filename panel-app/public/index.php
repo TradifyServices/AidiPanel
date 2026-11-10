@@ -1,6 +1,6 @@
 <?php
 /**
- * AidiPanel — Entry Point v1.3.3
+ * AidiPanel — Entry Point v1.4.0
  * All requests go through here (Nginx: try_files $uri $uri/ /index.php?$args)
  */
 
@@ -10,7 +10,7 @@ define('PANEL_ROOT',    dirname(__DIR__));
 define('APP_ROOT',      PANEL_ROOT . '/app');
 define('STORAGE_ROOT',  PANEL_ROOT . '/storage');
 define('PUBLIC_ROOT',   __DIR__);
-define('PANEL_VERSION', '1.3.3');
+define('PANEL_VERSION', '1.4.0');
 
 // PANEL_DIR = /opt/aidipanel (used by DB.php to read credentials.conf)
 define('PANEL_DIR', '/opt/aidipanel');
@@ -138,6 +138,14 @@ $router->post('/sites/{domain}/files/upload-cancel', 'SiteFileController@uploadC
 $router->get ('/sites/{domain}/backups/download', 'SiteBackupController@download');
 $router->post('/sites/{domain}/backups/create',   'SiteBackupController@create');
 $router->post('/sites/{domain}/backups/delete',   'SiteBackupController@delete');
+
+$router->get('/admin/docker', 'DockerController@index');
+$router->get('/admin/docker/logs', 'DockerController@logs');
+$router->post('/admin/docker/{operation}', 'DockerController@manage');
+$router->get('/sites/{domain}/containers/logs', 'DockerController@logs');
+$router->post('/sites/{domain}/containers/enable', 'DockerController@enable');
+$router->post('/sites/{domain}/containers/disable', 'DockerController@disable');
+$router->post('/sites/{domain}/containers/{operation}', 'DockerController@manage');
 
 // Per-site SFTP access
 $router->get('/sites/{domain}/sftp/status',         'SiteSftpController@status');

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-#  AidiPanel — Deploy Panel Web App v1.3.3
+#  AidiPanel — Deploy Panel Web App v1.4.0
 #  Usage: bash deploy-panel.sh [--dir /opt/aidipanel]
 #  Author: AidiPanel Team — by rezzaid
 # =============================================================================
@@ -10,7 +10,7 @@ set -Eeuo pipefail
 PANEL_DIR="/opt/aidipanel"
 PANEL_USER="aidipanel"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-readonly PANEL_VERSION="1.3.3"
+readonly PANEL_VERSION="1.4.0"
 readonly DEPLOY_LOCK="/run/lock/aidipanel-deploy.lock"
 
 # Resolve the panel's PHP CLI version. Prefer the installed policy file; if it
@@ -396,6 +396,16 @@ set -Eeuo pipefail
 export NO_COLOR=1
 cmd="${1:-}"
 case "$cmd" in
+  docker:status|docker:list|docker:create|docker:start|docker:stop|docker:restart|docker:remove|docker:logs|docker:enable|docker:disable)
+    if [[ "$#" -eq 1 && "$cmd" != docker:enable && "$cmd" != docker:disable ]]; then
+      :
+    elif [[ "$#" -eq 3 && "${2:-}" == --domain && "${3:-}" =~ ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$ ]]; then
+      :
+    else
+      echo "AidiPanel web Docker command accepts only an optional --domain; provisioning requires a domain." >&2
+      exit 126
+    fi
+    ;;
   system:cloud-metadata)
     [[ "$#" -eq 1 ]] || {
       echo "AidiPanel web command not allowed: system:cloud-metadata takes no arguments" >&2

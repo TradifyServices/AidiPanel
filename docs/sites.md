@@ -49,6 +49,12 @@ The panel exposes site-specific tabs for files, databases/phpMyAdmin, backups,
 cron jobs, SFTP, SSL, security rules, cache controls, PHP settings, and the Nginx
 configuration. Access depends on the panel account's role and site assignment.
 
+The **Containers** tab provides per-site rootless Docker management when Docker
+was selected during setup and an administrator has enabled that site's runtime.
+The daemon has a dedicated runtime account distinct from the PHP/SFTP user.
+Persistent container data uses managed named volumes, not site-home bind mounts.
+See [Docker containers](docker.md) for limits, permissions, and backup exclusions.
+
 ### Site Types
 
 | Type | Description | FastCGI Cache |

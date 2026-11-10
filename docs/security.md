@@ -12,6 +12,24 @@ This document summarizes how AidiPanel isolates sites and limits privilege. It d
 
 This is per-user process and file isolation, not container-level sandboxing.
 
+## Optional containers
+
+Docker is opt-in during installation. Administrator rootful management and
+per-site rootless management use separate fixed daemon sockets. Site users and
+the panel are never added to the rootful `docker` group. Rootless provisioning is
+administrator-only; subsequent site-container operations require the existing
+site assignment. The generic CLI API does not permit Docker commands.
+
+Web-created containers have finite CPU/memory/PID limits and loopback-only port
+bindings. Arbitrary flags, privileged containers, host namespaces/devices,
+Docker-socket mounts, and host-path escapes are rejected. Environment values
+travel on stdin and are excluded from panel activity/status output. Each site's
+rootless daemon runs as a separate no-login runtime user with a private home and
+socket, not the PHP/SFTP user. Site mounts are scoped Docker-managed volumes,
+never mutable host paths. Disable stops the runtime user manager and lingering.
+These controls do not impose aggregate quotas on arbitrary PHP code. Administrators still trust rootful
+images. See [Docker containers](docker.md) for runtime and backup limitations.
+
 ## Privilege Boundary
 
 - The web panel runs as the dedicated `aidipanel` system user. Nginx remains

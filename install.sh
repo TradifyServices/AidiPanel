@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-#  AidiPanel Installer v1.3.3
+#  AidiPanel Installer v1.4.0
 #  Stack: Nginx + FastCGI Cache + PHP-FPM (multi-version) + MySQL/MariaDB + Redis
 #  Supported OS: Debian 11/12, Ubuntu 22.04/24.04/26.04 (x86_64 & arm64)
 #
@@ -26,7 +26,8 @@ IFS=$'\n\t'
 # 0. GLOBAL CONSTANTS & DEFAULTS
 # ---------------------------------------------------------------------------
 readonly PANEL_NAME="AidiPanel"
-readonly PANEL_VERSION="1.3.3"
+readonly PANEL_VERSION="1.4.0"
+readonly WPCLI_VERSION="2.12.0"
 readonly AIDIPANEL_RELEASE_PUBLIC_KEY_B64="LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KTUZrd0V3WUhLb1pJemowQ0FRWUlLb1pJemowREFRY0RRZ0FFbmVQeXBrYjhVSkZOOFppeDV1enhETVhITFJrTQpBZkFHK3pLQjlLUjQ0N25OMVkvMkRLT0drU0pBZ21DQkJUek9sdkdhTi9Sd28xQnpxTGY3Z0w2VU53PT0KLS0tLS1FTkQgUFVCTElDIEtFWS0tLS0tCg=="
 readonly PANEL_USER="aidipanel"
 readonly PANEL_DIR="/opt/aidipanel"
@@ -51,6 +52,12 @@ declare -A DB_ENGINE_LABELS=(
 PANEL_PORT=8443
 DB_ENGINE="mariadb123"
 INSTALL_REDIS=true
+CACHE_ENGINE=redis
+INSTALL_DOCKER=false
+CACHE_SELECTION_EXPLICIT=false
+DOCKER_SELECTION_EXPLICIT=false
+CACHE_PROVISIONING_STARTED=false
+CACHE_ACL_READY=false
 DRY_RUN=false
 DB_ROOT_PASS=""
 DB_DEFAULTS_TMP=""
@@ -71,11 +78,11 @@ RED='\033[0;31m'; RESET='\033[0m'
 # 1. LOGGING HELPERS
 # ---------------------------------------------------------------------------
 _ts()   { date '+%Y-%m-%d %H:%M:%S'; }
-log()   { printf '[%s] [INFO]  %s\n' "$(_ts)" "$*" >> "$PANEL_LOG"; }
-warn()  { printf '[%s] [WARN]  %s\n' "$(_ts)" "$*" >> "$PANEL_LOG"; }
-ok()    { printf '[%s] [OK]    %s\n' "$(_ts)" "$*" >> "$PANEL_LOG"; }
+log()   { [[ "$DRY_RUN" == true ]] || printf '[%s] [INFO]  %s\n' "$(_ts)" "$*" >> "$PANEL_LOG"; }
+warn()  { if [[ "$DRY_RUN" == true ]]; then printf '%s\n' "$*" >&2; else printf '[%s] [WARN]  %s\n' "$(_ts)" "$*" >> "$PANEL_LOG"; fi; }
+ok()    { [[ "$DRY_RUN" == true ]] || printf '[%s] [OK]    %s\n' "$(_ts)" "$*" >> "$PANEL_LOG"; }
 die()   {
-  echo -e "${RED}[$(_ts)] [ERROR]${RESET} $*" | tee -a "$PANEL_LOG" >&2
+  printf '%s\n' "ERROR: $*" >&2
   exit 1
 }
 
@@ -163,6 +170,12 @@ _cleanup() {
   local exit_code=$?
   [[ -n "$DB_DEFAULTS_TMP" ]] && rm -f -- "$DB_DEFAULTS_TMP"
   if [[ $exit_code -ne 0 ]]; then
+    if [[ "$DRY_RUN" != true && "$CACHE_PROVISIONING_STARTED" == true && "$CACHE_ACL_READY" != true ]]; then
+      systemctl disable --now "$CACHE_SERVICE" >> "$PANEL_LOG" 2>&1 || true
+      if systemctl is-active --quiet "$CACHE_SERVICE"; then
+        printf 'ERROR: Stop and disable %s manually; cache isolation was not completed.\n' "$CACHE_SERVICE" >&2
+      fi
+    fi
     echo -e "\n${RED}══════════════════════════════════════════${RESET}"
     echo -e "${RED} ${PANEL_NAME} installation FAILED (exit $exit_code)${RESET}"
     echo -e "${RED} Check full log: ${PANEL_LOG}${RESET}"
@@ -200,14 +213,27 @@ _parse_args() {
         [[ "$1" != *"'"* && "$1" != *'\'* && "$1" != *$'\n'* && "$1" != *$'\r'* ]] \
           || die "--mysql-root-pass must not contain quotes, backslashes, or line breaks"
         DB_ROOT_PASS="$1"
-        warn "--mysql-root-pass is deprecated; use --db-root-pass"
+        printf '%s\n' '--mysql-root-pass is deprecated; use --db-root-pass' >&2
         ;;
       --no-redis)
-        INSTALL_REDIS=false
+        _select_cache_engine none
+        ;;
+      --cache-engine)
+        [[ $# -ge 2 ]] || die "--cache-engine requires redis, valkey, or none."
+        shift
+        _select_cache_engine "$1"
+        ;;
+      --with-docker|--no-docker)
+        local docker_selection=false
+        [[ "$1" == --with-docker ]] && docker_selection=true
+        if [[ "$DOCKER_SELECTION_EXPLICIT" == true && "$INSTALL_DOCKER" != "$docker_selection" ]]; then
+          die "Conflicting Docker selections: use --with-docker or --no-docker."
+        fi
+        INSTALL_DOCKER="$docker_selection"
+        DOCKER_SELECTION_EXPLICIT=true
         ;;
       --dry-run)
         DRY_RUN=true
-        warn "Dry-run mode enabled — no changes will be made to the system."
         ;;
       --plain)
         UI_PLAIN=true
@@ -218,7 +244,10 @@ _parse_args() {
         echo "  --db-engine ENGINE    Database engine (default: mariadb123)"
         echo "                        Options: mysql80 | mysql84 | mysql97 | mariadb1011 | mariadb114 | mariadb118 | mariadb123"
         echo "  --db-root-pass PASS   Set DB root password non-interactively"
-        echo "  --no-redis            Skip Redis installation"
+        echo "  --cache-engine ENGINE Object cache: redis | valkey | none (default: redis)"
+        echo "  --no-redis            Compatibility alias for --cache-engine none"
+        echo "  --with-docker         Install Docker Engine and rootless prerequisites"
+        echo "  --no-docker           Skip Docker (default for unattended installs)"
         echo "  --dry-run             Simulate install without making changes"
         echo "  --plain               ASCII output (no unicode); for basic terminals"
         exit 0
@@ -229,6 +258,87 @@ _parse_args() {
     esac
     shift
   done
+}
+
+_select_cache_engine() {
+  case "$1" in redis|valkey|none) ;; *) die "--cache-engine must be redis, valkey, or none." ;; esac
+  if [[ "$CACHE_SELECTION_EXPLICIT" == true && "$CACHE_ENGINE" != "$1" ]]; then
+    die "Conflicting cache selections: use one --cache-engine value or --no-redis."
+  fi
+  CACHE_ENGINE="$1"
+  INSTALL_REDIS=true
+  [[ "$CACHE_ENGINE" == none ]] && INSTALL_REDIS=false
+  CACHE_SELECTION_EXPLICIT=true
+  return 0
+}
+
+_select_optional_components() {
+  [[ "$CACHE_SELECTION_EXPLICIT" == true && "$DOCKER_SELECTION_EXPLICIT" == true ]] && return 0
+  local terminal_fd cache_answer docker_answer
+  if ! { exec {terminal_fd}<>/dev/tty; } 2>/dev/null; then return 0; fi
+  if [[ "$CACHE_SELECTION_EXPLICIT" != true ]]; then
+    while true; do
+      printf 'Object cache (redis/valkey/none) [redis]: ' >&"$terminal_fd"
+      IFS= read -r -u "$terminal_fd" cache_answer || { exec {terminal_fd}>&-; return 0; }
+      case "${cache_answer:-redis}" in
+        redis|valkey|none) _select_cache_engine "${cache_answer:-redis}"; break ;;
+        *) printf 'Choose redis, valkey, or none.\n' >&"$terminal_fd" ;;
+      esac
+    done
+  fi
+  if [[ "$DOCKER_SELECTION_EXPLICIT" != true ]]; then
+    while true; do
+      printf 'Install Docker? [y/N]: ' >&"$terminal_fd"
+      IFS= read -r -u "$terminal_fd" docker_answer || break
+      case "$docker_answer" in
+        y|Y|yes|YES) INSTALL_DOCKER=true; break ;;
+        n|N|no|NO|'') INSTALL_DOCKER=false; break ;;
+        *) printf 'Choose yes or no.\n' >&"$terminal_fd" ;;
+      esac
+    done
+  fi
+  exec {terminal_fd}>&-
+}
+
+_resolve_cache_engine() {
+  CACHE_PACKAGE='' CACHE_SERVICE='' CACHE_CLI='' CACHE_CONF='' CACHE_ACCOUNT='' CACHE_ACL_FILE=''
+  case "${CACHE_ENGINE:-redis}" in
+    redis|valkey)
+      CACHE_PACKAGE="${CACHE_ENGINE}-server"
+      CACHE_SERVICE="$CACHE_PACKAGE"
+      CACHE_CLI="${CACHE_ENGINE}-cli"
+      CACHE_CONF="/etc/${CACHE_ENGINE}/${CACHE_ENGINE}.conf"
+      CACHE_ACCOUNT="$CACHE_ENGINE"
+      CACHE_ACL_FILE="/etc/${CACHE_ENGINE}/users.acl"
+      ;;
+    none) ;;
+    *) die "Invalid cache engine: ${CACHE_ENGINE}" ;;
+  esac
+}
+
+_assert_apt_candidate() {
+  local package="$1" candidate
+  candidate=$(apt-cache policy "$package" 2>/dev/null | awk '/Candidate:/ {print $2}')
+  [[ -n "$candidate" && "$candidate" != '(none)' ]] || die "Package ${package} is unavailable for ${OS_ID}/${OS_CODENAME}/$(_apt_arch). Enable its supported signed distribution repository and refresh apt indexes, then retry; for cache use --cache-engine redis or --cache-engine none, or omit --with-docker."
+}
+
+_assert_optional_components_available() {
+  _resolve_cache_engine
+  [[ -z "$CACHE_PACKAGE" ]] || _assert_apt_candidate "$CACHE_PACKAGE"
+  if [[ "$INSTALL_DOCKER" == true ]]; then
+    case "$OS_ID" in debian|ubuntu) ;; *) die "Docker requires supported Debian or Ubuntu; omit --with-docker." ;; esac
+    local prerequisite
+    for prerequisite in uidmap dbus-user-session slirp4netns; do _assert_apt_candidate "$prerequisite"; done
+    local repository="https://download.docker.com/linux/${OS_ID}/dists/${OS_CODENAME}"
+    local package_index package
+    curl -fsSL --proto '=https' --tlsv1.2 --max-time 20 --head "${repository}/InRelease" >/dev/null \
+      && package_index=$(curl -fsSL --proto '=https' --tlsv1.2 --max-time 30 "${repository}/stable/binary-$(_apt_arch)/Packages.gz" | gzip -dc) \
+      || die "Official signed Docker packages unavailable for ${OS_ID}/${OS_CODENAME}/$(_apt_arch). Use a Docker-supported OS or omit --with-docker."
+    for package in docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-ce-rootless-extras; do
+      grep -Fxq "Package: ${package}" <<< "$package_index" \
+        || die "Official Docker package ${package} unavailable for ${OS_ID}/${OS_CODENAME}/$(_apt_arch); omit --with-docker."
+    done
+  fi
 }
 
 # ---------------------------------------------------------------------------
@@ -386,9 +496,10 @@ print_readiness_check() {
 print_provisioning_plan() {
   ui_section "Provisioning Plan"
   ui_kv "Foundation"    "System tools · Swap · Base services"
-  ui_kv "Web Engine"    "Nginx mainline · FastCGI Cache"
+  ui_kv "Web Engine"    "Nginx stable · FastCGI Cache"
   ui_kv "Runtime"       "PHP-FPM ${PHP_DEFAULT_VERSION} (default) · 8.2/8.3/8.4 on-demand"
-  ui_kv "Data Layer"    "${DB_ENGINE_LABELS[$DB_ENGINE]} · Redis"
+  ui_kv "Data Layer"    "${DB_ENGINE_LABELS[$DB_ENGINE]} · Object cache: ${CACHE_ENGINE}"
+  ui_kv "Docker"        "${INSTALL_DOCKER} (rootless per site on demand)"
   ui_kv "Security"      "UFW · Fail2ban · Certbot · Sudo wrapper"
   ui_kv "Control Plane" "AidiPanel Web UI · CLI · Cron"
   ui_kv "Verification"  "Service status · Panel response · Config test"
@@ -399,14 +510,14 @@ print_blueprint() {
   ui_section "Runtime Blueprint"
   printf '%s\n' "Internet"
   printf '  %s\n' "$(_u '↓' 'v')"
-  printf '%s\n' "Nginx ${NGINX_VERSION:-mainline}"
+  printf '%s\n' "Nginx ${NGINX_VERSION:-stable}"
   local mid end
   mid="$(_u '├─' '|-')"; end="$(_u '└─' '\-')"
   printf '  %s %-16s %s\n' "$mid" "FastCGI Cache" "$1"
   printf '  %s %-16s %s\n' "$end" "PHP-FPM ${PHP_DEFAULT_VERSION}" "$1"
   printf '\n'
   printf '%-24s %s\n' "${DB_ENGINE_LABELS[$DB_ENGINE]%% (*}" "$2"
-  printf '%-24s %s\n' "Redis" "$2"
+  printf '%-24s %s\n' "Object cache: ${CACHE_ENGINE}" "$2"
   printf '%-24s %s\n' "AidiPanel UI" "$3"
 }
 
@@ -418,7 +529,7 @@ _banner() {
   ui_rule
   printf '%s\n\n' "Manage fast LEMP sites without the bloat"
   ui_kv "Version"    "v${PANEL_VERSION}"
-  ui_kv "Stack"      "Nginx · PHP-FPM · ${DB_ENGINE_LABELS[$DB_ENGINE]%% *} · Redis · SSL"
+  ui_kv "Stack"      "Nginx · PHP-FPM · ${DB_ENGINE_LABELS[$DB_ENGINE]%% *} · ${CACHE_ENGINE} · SSL"
   ui_kv "Mode"       "Fresh VPS provisioning"
   ui_kv "By"         "rezzaid"
   printf '\n'
@@ -431,12 +542,12 @@ _banner() {
 # ---------------------------------------------------------------------------
 _apt_update() {
   log "Updating apt package lists..."
-  run_spin "updating package index" apt-get update -qq
+  run_spin "updating package index" apt-get -o Acquire::AllowInsecureRepositories=false -o Acquire::AllowDowngradeToInsecureRepositories=false update -qq
 }
 
 _apt_install() {
   log "Installing packages: $*"
-  run_spin "installing ${1}${2:+ …}" apt-get install -y -qq --no-install-recommends "$@"
+  run_spin "installing ${1}${2:+ …}" apt-get -o APT::Get::AllowUnauthenticated=false install -y -qq --no-install-recommends "$@"
 }
 
 _pkg_installed() {
@@ -941,6 +1052,7 @@ _install_php_version() {
     if apt-cache show "php${ver}-${ext}" >/dev/null 2>&1; then
       pkgs+=("php${ver}-${ext}")
     else
+      [[ "$ext" != redis ]] || die "Required PHP ${ver} Redis-compatible extension is unavailable for ${CACHE_ENGINE}; check the signed PHP repository."
       skipped+=("php${ver}-${ext}")
     fi
   done
@@ -1008,13 +1120,16 @@ PHPINI
 
 _install_all_php_versions() {
   log "Writing PHP policy..."
+  [[ "$DRY_RUN" == true ]] && return 0
+  local cache_extension=' redis'
+  [[ "$CACHE_ENGINE" != none ]] || cache_extension=''
   mkdir -p /etc/aidipanel
-  cat > /etc/aidipanel/php.conf <<'PHPCONF'
+  cat > /etc/aidipanel/php.conf <<PHPCONF
 # /etc/aidipanel/php.conf — AidiPanel PHP version policy (single source of truth).
 # Written by install.sh; sourced by the CLI; parsed by the panel.
 PHP_DEFAULT_VERSION="8.5"
 PHP_AVAILABLE_VERSIONS="8.2 8.3 8.4 8.5"
-PHP_EXTENSIONS="fpm cli common mysql sqlite3 redis xml mbstring curl zip gd intl bcmath soap imagick opcache"
+PHP_EXTENSIONS="fpm cli common mysql sqlite3${cache_extension} xml mbstring curl zip gd intl bcmath soap imagick opcache"
 PHPCONF
   chmod 644 /etc/aidipanel/php.conf
 
@@ -1302,27 +1417,31 @@ MYCNF
 # 11. REDIS — lightweight config
 # ---------------------------------------------------------------------------
 _install_redis() {
+  _resolve_cache_engine
   if [[ "$INSTALL_REDIS" == "false" ]]; then
     log "Skipping Redis (--no-redis)"
     return 0
   fi
-  if _pkg_installed redis-server; then
-    log "Redis already installed — skipping"
+  [[ "$DRY_RUN" == true ]] && return 0
+  CACHE_PROVISIONING_STARTED=true
+  if _pkg_installed "$CACHE_PACKAGE"; then
+    log "${CACHE_ENGINE} already installed — skipping"
     return 0
   fi
-  log "Installing Redis..."
-  _apt_install redis-server
-  run systemctl enable --now redis-server
-  ok "Redis installed"
+  log "Installing ${CACHE_ENGINE}..."
+  _apt_install "$CACHE_PACKAGE"
+  run systemctl enable --now "$CACHE_SERVICE"
+  ok "${CACHE_ENGINE} installed"
 }
 
 _configure_redis() {
   [[ "$INSTALL_REDIS" == "false" ]] && return 0
   [[ "$DRY_RUN" == "true" ]] && return 0
-  log "Configuring Redis (lightweight)..."
+  _resolve_cache_engine
+  log "Configuring ${CACHE_ENGINE} (lightweight)..."
 
-  local redis_conf="/etc/redis/redis.conf"
-  [[ -f "$redis_conf" ]] || { warn "Redis config not found; skipping"; return 0; }
+  local redis_conf="$CACHE_CONF"
+  [[ -f "$redis_conf" ]] || die "Selected cache configuration not found: ${redis_conf}"
   cp "$redis_conf" "${redis_conf}.bak.$(date +%s)"
 
   # Adaptive maxmemory based on RAM
@@ -1332,32 +1451,53 @@ _configure_redis() {
   (( mem_mb >= 4096 )) && redis_maxmem="512mb"
 
   sed -i \
-    -e 's/^bind .*/bind 127.0.0.1 ::1/' \
-    -e "s/^# maxmemory .*/maxmemory ${redis_maxmem}/" \
-    -e 's/^# maxmemory-policy .*/maxmemory-policy allkeys-lru/' \
+    -e '/^[[:space:]]*bind[[:space:]]/d' \
+    -e '/^[[:space:]]*protected-mode[[:space:]]/d' \
     -e 's/^supervised no/supervised systemd/' \
-    -e 's/^save 900 1/#save 900 1/' \
-    -e 's/^save 300 10/#save 300 10/' \
-    -e 's/^save 60 10000/#save 60 10000/' \
+    -e '/^[[:space:]]*save[[:space:]]/d' \
+    -e '/^[[:space:]#]*appendonly[[:space:]]/d' \
+    -e '/^[[:space:]#]*maxmemory[[:space:]]/d' \
+    -e '/^[[:space:]#]*maxmemory-policy[[:space:]]/d' \
     "$redis_conf"
+  printf '\nbind 127.0.0.1 ::1\nprotected-mode yes\nsave ""\nappendonly no\nmaxmemory %s\nmaxmemory-policy allkeys-lru\n' "$redis_maxmem" >> "$redis_conf"
 
   # Per-site ACL isolation (backlog #6): point redis.conf at an aclfile so each
   # site can later get its own scoped Redis identity. The empty file here is a
   # no-op for behavior — `default` stays open; the admin user + `default off`
   # lock are applied by `cache:redis-acl`. Refuse if ACLs are externally managed.
   if ! grep -qE '^[[:space:]]*user[[:space:]]' "$redis_conf" 2>/dev/null; then
-    local acl_file="/etc/redis/users.acl"
+    local acl_file="$CACHE_ACL_FILE"
     if [[ ! -f "$acl_file" ]]; then
       : > "$acl_file"
-      chown redis:redis "$acl_file" 2>/dev/null || true
-      chmod 640 "$acl_file" 2>/dev/null || true
+      chown "${CACHE_ACCOUNT}:${CACHE_ACCOUNT}" "$acl_file"
+      chmod 640 "$acl_file"
     fi
     grep -qE "^[[:space:]]*aclfile[[:space:]]+${acl_file}" "$redis_conf" 2>/dev/null \
       || printf '\n# AidiPanel — per-site Redis ACL isolation (backlog #6)\naclfile %s\n' "$acl_file" >> "$redis_conf"
   fi
 
-  run systemctl restart redis-server
-  ok "Redis configured (maxmemory: ${redis_maxmem}, policy: allkeys-lru, persistence: off, aclfile)"
+  run systemctl restart "$CACHE_SERVICE"
+  ok "${CACHE_ENGINE} configured (maxmemory: ${redis_maxmem}, policy: allkeys-lru, persistence: off, aclfile)"
+}
+
+_install_docker() {
+  [[ "$INSTALL_DOCKER" == true ]] || return 0
+  [[ "$DRY_RUN" == true ]] && return 0
+  mkdir -p /etc/apt/keyrings
+  _install_verified_apt_key "https://download.docker.com/linux/${OS_ID}/gpg" \
+    /etc/apt/keyrings/aidipanel-docker.gpg \
+    9DC858229FC7DD38854AE2D88D81803C0EBFCD88
+  printf 'deb [arch=%s signed-by=/etc/apt/keyrings/aidipanel-docker.gpg] https://download.docker.com/linux/%s %s stable\n' \
+    "$(_apt_arch)" "$OS_ID" "$OS_CODENAME" > /etc/apt/sources.list.d/aidipanel-docker.list
+  _apt_update
+  local package
+  for package in docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-ce-rootless-extras uidmap dbus-user-session slirp4netns; do
+    _assert_apt_candidate "$package"
+  done
+  _apt_install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-ce-rootless-extras \
+    uidmap dbus-user-session slirp4netns
+  run systemctl enable --now docker
+  ok "Docker Engine installed; site rootless daemons are provisioned on demand"
 }
 
 # Download the first reachable URL into $1. HTTPS + TLS1.2 enforced; returns 0
@@ -1374,6 +1514,7 @@ _download_first() {
 }
 
 _install_wpcli() {
+  [[ "$DRY_RUN" == true ]] && return 0
   if command -v wp &>/dev/null; then
     log "WP-CLI already installed — skipping"
     return 0
@@ -1383,15 +1524,10 @@ _install_wpcli() {
   tmp_dir=$(mktemp -d)
   phar="${tmp_dir}/wp-cli.phar"
   checksum="${tmp_dir}/wp-cli.phar.sha512"
-  # Prefer the jsdelivr CDN mirror of wp-cli/builds; raw.githubusercontent.com
-  # rate-limits (HTTP 429) back-to-back requests from cloud IPs, which left the
-  # sha512 fetch failing and WP-CLI uninstalled on fresh cloud VPS installs.
   if _download_first "$phar" \
-       "https://cdn.jsdelivr.net/gh/wp-cli/builds@gh-pages/phar/wp-cli.phar" \
-       "https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar" \
+       "https://github.com/wp-cli/wp-cli/releases/download/v${WPCLI_VERSION}/wp-cli-${WPCLI_VERSION}.phar" \
      && _download_first "$checksum" \
-       "https://cdn.jsdelivr.net/gh/wp-cli/builds@gh-pages/phar/wp-cli.phar.sha512" \
-       "https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar.sha512" \
+       "https://github.com/wp-cli/wp-cli/releases/download/v${WPCLI_VERSION}/wp-cli-${WPCLI_VERSION}.phar.sha512" \
      && printf '%s  %s\n' "$(cat "$checksum")" "$phar" | sha512sum -c - >/dev/null 2>&1; then
     install -o root -g root -m 0755 "$phar" /usr/local/bin/wp
     rm -rf "$tmp_dir"
@@ -1495,6 +1631,8 @@ NGINX_CACHE_DIR=${NGINX_CACHE_DIR}
 NGINX_CACHE_ZONE=${NGINX_CACHE_ZONE}
 PHP_DEFAULT_VERSION=${PHP_DEFAULT_VERSION}
 INSTALL_REDIS=${INSTALL_REDIS}
+CACHE_ENGINE=${CACHE_ENGINE}
+INSTALL_DOCKER=${INSTALL_DOCKER}
 OS_ID=${OS_ID}
 OS_VERSION_ID=${OS_VERSION_ID}
 OS_CODENAME=${OS_CODENAME}
@@ -1881,45 +2019,49 @@ _install_cli() {
 
 _enable_redis_acl_or_die() {
   [[ "$INSTALL_REDIS" == "false" ]] && return 0
+  local cache_service="${CACHE_SERVICE:-${CACHE_ENGINE:-redis}-server}"
+  local cache_label=Redis
+  [[ "${CACHE_ENGINE:-redis}" == valkey ]] && cache_label=Valkey
   if [[ "$DRY_RUN" == "true" ]]; then
-    warn "[dry-run] skipping Redis ACL isolation"
+    warn "[dry-run] skipping ${cache_label} ACL isolation"
     return 0
   fi
 
   local attempt
   for attempt in 1 2 3; do
     if /usr/local/bin/aidipanel cache:redis-acl --action enable >> "$PANEL_LOG" 2>&1; then
-      ui_ok "Redis ACL isolation enabled (default user locked)"
+      CACHE_ACL_READY=true
+      ui_ok "${cache_label} ACL isolation enabled (default user locked)"
       return 0
     fi
-    warn "Redis ACL isolation attempt ${attempt}/3 failed."
+    warn "${cache_label} ACL isolation attempt ${attempt}/3 failed."
     if [[ "$attempt" -lt 3 ]]; then
-      ui_warn "Redis ACL isolation attempt ${attempt}/3 failed — retrying"
+      ui_warn "${cache_label} ACL isolation attempt ${attempt}/3 failed — retrying"
       sleep 2
     fi
   done
 
-  warn "Redis ACL isolation failed; stopping and disabling Redis."
-  systemctl disable --now redis-server >> "$PANEL_LOG" 2>&1 || true
-  if systemctl is-active --quiet redis-server; then
-    systemctl stop redis-server >> "$PANEL_LOG" 2>&1 || true
+  warn "${cache_label} ACL isolation failed; stopping and disabling ${cache_label}."
+  systemctl disable --now "$cache_service" >> "$PANEL_LOG" 2>&1 || true
+  if systemctl is-active --quiet "$cache_service"; then
+    systemctl stop "$cache_service" >> "$PANEL_LOG" 2>&1 || true
   fi
-  if systemctl is-enabled --quiet redis-server; then
-    systemctl disable redis-server >> "$PANEL_LOG" 2>&1 || true
+  if systemctl is-enabled --quiet "$cache_service"; then
+    systemctl disable "$cache_service" >> "$PANEL_LOG" 2>&1 || true
   fi
 
   local redis_active=false redis_enabled=false cli_removed=true
-  systemctl is-active --quiet redis-server && redis_active=true
-  systemctl is-enabled --quiet redis-server && redis_enabled=true
+  systemctl is-active --quiet "$cache_service" && redis_active=true
+  systemctl is-enabled --quiet "$cache_service" && redis_enabled=true
   rm -f -- /usr/local/bin/aidipanel >> "$PANEL_LOG" 2>&1 || cli_removed=false
 
   if [[ "$redis_active" == "true" || "$redis_enabled" == "true" ]]; then
-    die "Redis ACL isolation failed and Redis could not be stopped and disabled. Run 'systemctl disable --now redis-server' manually, check ${PANEL_LOG}, then rerun the installer."
+    die "${cache_label} ACL isolation failed and ${cache_label} could not be stopped and disabled. Run 'systemctl disable --now ${cache_service}' manually, check ${PANEL_LOG}, then rerun the installer."
   fi
   if [[ "$cli_removed" != "true" ]]; then
-    die "Redis ACL isolation failed. Redis was stopped and disabled, but incomplete CLI cleanup failed. Remove /usr/local/bin/aidipanel manually, check ${PANEL_LOG}, then rerun the installer."
+    die "${cache_label} ACL isolation failed. ${cache_label} was stopped and disabled, but incomplete CLI cleanup failed. Remove /usr/local/bin/aidipanel manually, check ${PANEL_LOG}, then rerun the installer."
   fi
-  die "Redis ACL isolation failed after 3 attempts. Redis was stopped and disabled. Check ${PANEL_LOG}, then rerun the installer."
+  die "${cache_label} ACL isolation failed after 3 attempts. ${cache_label} was stopped and disabled. Check ${PANEL_LOG}, then rerun the installer."
 }
 
 # ---------------------------------------------------------------------------
@@ -2054,6 +2196,16 @@ set -Eeuo pipefail
 export NO_COLOR=1
 cmd="${1:-}"
 case "$cmd" in
+  docker:status|docker:list|docker:create|docker:start|docker:stop|docker:restart|docker:remove|docker:logs|docker:enable|docker:disable)
+    if [[ "$#" -eq 1 && "$cmd" != docker:enable && "$cmd" != docker:disable ]]; then
+      :
+    elif [[ "$#" -eq 3 && "${2:-}" == --domain && "${3:-}" =~ ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$ ]]; then
+      :
+    else
+      echo "AidiPanel web Docker command accepts only an optional --domain; provisioning requires a domain." >&2
+      exit 126
+    fi
+    ;;
   system:cloud-metadata)
     [[ "$#" -eq 1 ]] || {
       echo "AidiPanel web command not allowed: system:cloud-metadata takes no arguments" >&2
@@ -2312,7 +2464,8 @@ _test_and_start_services() {
 
   local services=("nginx" "php${PHP_DEFAULT_VERSION}-fpm")
   services+=("$(_db_service_name)")
-  [[ "$INSTALL_REDIS" == "true" ]] && services+=("redis-server")
+  [[ "$INSTALL_REDIS" == "true" ]] && services+=("$CACHE_SERVICE")
+  [[ "$INSTALL_DOCKER" == true ]] && services+=(docker)
 
   for svc in "${services[@]}"; do
     log "Enabling and starting: ${svc}..."
@@ -2339,7 +2492,8 @@ _health_check() {
   _svc_row "php${PHP_DEFAULT_VERSION}-fpm"
   _svc_row aidipanel-fpm
   _svc_row "$(_db_service_name)"
-  [[ "$INSTALL_REDIS" == "true" ]] && _svc_row redis-server
+  [[ "$INSTALL_REDIS" == "true" ]] && _svc_row "$CACHE_SERVICE"
+  [[ "$INSTALL_DOCKER" == true ]] && _svc_row docker
   if [[ -d "$NGINX_CACHE_DIR" ]]; then _matrix "FastCGI cache" "ready"; else _matrix "FastCGI cache" "missing"; failed=$((failed+1)); fi
   if curl -kfsS --http1.1 \
       --connect-timeout 2 --max-time 5 \
@@ -2420,7 +2574,7 @@ _print_summary() {
   printf '%-30s %s %s\n' "No web engine"     "$(_u '→' '->')" "Nginx ${NGINX_VERSION:-installed}"
   printf '%-30s %s %s\n' "No PHP runtime"    "$(_u '→' '->')" "PHP-FPM $(_php_list)"
   printf '%-30s %s %s\n' "No database layer" "$(_u '→' '->')" "${DB_ENGINE_LABELS[$DB_ENGINE]%% (*}"
-  printf '%-30s %s %s\n' "No cache layer"    "$(_u '→' '->')" "Redis + FastCGI Cache"
+  printf '%-30s %s %s\n' "No cache layer"    "$(_u '→' '->')" "Object cache: ${CACHE_ENGINE} + FastCGI Cache"
   printf '%-30s %s %s\n' "No control panel"  "$(_u '→' '->')" "AidiPanel on port ${PANEL_PORT}"
 
   ui_section "Server Passport"
@@ -2432,7 +2586,8 @@ _print_summary() {
   ui_kv "Web Engine"  "Nginx ${NGINX_VERSION:-installed}"
   ui_kv "Runtime"     "PHP-FPM $(_php_list)"
   ui_kv "Database"    "${DB_ENGINE_LABELS[$DB_ENGINE]}"
-  ui_kv "Cache"       "Redis + FastCGI Cache"
+  ui_kv "Cache"       "Object cache: ${CACHE_ENGINE} + FastCGI Cache"
+  ui_kv "Docker"      "$INSTALL_DOCKER"
   ui_kv "Firewall"    "UFW enabled (22, 80, 443, ${PANEL_PORT})"
   ui_kv "Protection"  "Fail2ban enabled"
   printf '\n'
@@ -2499,17 +2654,26 @@ _cleanup_installer() {
   fi
 }
 main() {
+  _parse_args "$@"
+  _select_optional_components
+  _resolve_cache_engine
+  _color_init
+  if [[ "$DRY_RUN" == true ]]; then
+    printf 'Dry-run: no host changes\nCACHE_ENGINE=%s\nINSTALL_REDIS=%s\nINSTALL_DOCKER=%s\n' "$CACHE_ENGINE" "$INSTALL_REDIS" "$INSTALL_DOCKER"
+    printf 'Cache package: %s; service: %s; CLI: %s; config: %s\n' "${CACHE_PACKAGE:-none}" "${CACHE_SERVICE:-none}" "${CACHE_CLI:-none}" "${CACHE_CONF:-none}"
+    printf 'Docker opt-in installs signed official Engine packages and rootless prerequisites.\n'
+    return 0
+  fi
+  _check_root
+  _detect_os
+  _assert_optional_components_available
   mkdir -p "$(dirname "$PANEL_LOG")"
   touch "$PANEL_LOG"
   chmod 640 "$PANEL_LOG"
 
-  _parse_args "$@"
-  _color_init
   _banner
-  _check_root
   _check_lock
   _check_already_installed
-  _detect_os
   _check_resources
   _check_internet
   _assert_db_engine_available
@@ -2542,7 +2706,8 @@ main() {
 
   ui_section "Runtime Layer"; ui_note "Installing the default PHP-FPM runtime"; printf '\n'
   printf '%s\n' "Runtime bundle (PHP ${PHP_DEFAULT_VERSION})"
-  ui_note "PHP-FPM · CLI · MySQL · Redis · SQLite · XML · mbstring"
+  ui_note "PHP-FPM · CLI · MySQL · SQLite · XML · mbstring"
+  [[ "$CACHE_ENGINE" == none ]] || ui_note "Redis-compatible PHP extension for ${CACHE_ENGINE}"
   ui_note "curl · zip · GD · intl · bcmath · SOAP · imagick · OPcache"
   ui_note "Versions 8.2 / 8.3 / 8.4 install on-demand (aidipanel php:install)"
   printf '\n'
@@ -2560,8 +2725,11 @@ main() {
   ui_ok "${DB_ENGINE_LABELS[$DB_ENGINE]%% (*} repository added"
   _install_database;   ui_ok "${DB_ENGINE_LABELS[$DB_ENGINE]%% (*} installed"
   _configure_database; ui_ok "Database secured"; ui_ok "AidiPanel database created"
-  _install_redis;      ui_ok "Redis installed"
-  _configure_redis;    ui_ok "Redis configured: 128mb, allkeys-lru, persistence off"
+  _install_redis
+  _configure_redis
+  ui_ok "Object cache selection: ${CACHE_ENGINE}"
+  _install_docker
+  ui_ok "Docker installation: ${INSTALL_DOCKER}"
   if _install_wpcli; then ui_ok "WP-CLI ready"; else ui_warn "WP-CLI unavailable — WordPress site creation limited"; fi
   ui_elapsed "$t"
 

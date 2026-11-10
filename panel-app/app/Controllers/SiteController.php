@@ -550,6 +550,15 @@ class SiteController extends BaseController
             }
         }
 
+        $dockerStatus = ['available' => false, 'enabled' => false, 'containers' => []];
+        if ($activeTab === 'containers' && !demo_mode()) {
+            $result = run_cli('docker:status', ['--domain', $domain]);
+            $decoded = json_decode((string) ($result['output'] ?? ''), true);
+            if (!empty($result['success']) && is_array($decoded)) {
+                $dockerStatus = array_replace($dockerStatus, $decoded);
+            }
+        }
+
         // hasCache is still needed for the Overview tab cache card (cheap DB read)
         $hasCache = (bool) ($site['cache_enabled'] ?? false);
 
@@ -567,7 +576,7 @@ class SiteController extends BaseController
             'databases', 'dbUsers', 'dbHost', 'dbPort', 'dbPrefix', 'pmaInstalled', 'pmaUrl', 'wpDbInfo',
             'basicAuthInfo', 'cloudflareInfo', 'ipBlockInfo', 'ipBlockList', 'cloudflareOnlyInfo',
             'cronJobs', 'cronManualCount',
-            'backupEntries', 'proxyUpstream'
+            'backupEntries', 'proxyUpstream', 'dockerStatus'
         ) + ['_full_bleed' => true]);
     }
 
@@ -945,7 +954,7 @@ class SiteController extends BaseController
 
     private function sanitizeTab(string $raw): string
     {
-        $valid = ['overview', 'performance', 'ssl', 'database', 'security', 'cron', 'files', 'sftp', 'backup', 'settings'];
+        $valid = ['overview', 'performance', 'ssl', 'database', 'security', 'cron', 'files', 'sftp', 'backup', 'containers', 'settings'];
         return in_array($raw, $valid, true) ? $raw : 'overview';
     }
 
@@ -1292,7 +1301,7 @@ class SiteController extends BaseController
         // Skip CLI call for non-WordPress sites — report unsupported immediately
         if ($type !== 'wordpress') {
             return [
-                'engine' => 'redis', 'service_ok' => false,
+                'engine' => cache_engine(), 'service_ok' => false,
                 'redis_host' => '127.0.0.1', 'redis_port' => '6379',
                 'site_cache_status' => 'unsupported', 'plugin_status' => 'not_wordpress',
                 'dropin_status' => 'unknown', 'prefix' => '', 'prefix_managed' => false,
@@ -1309,7 +1318,7 @@ class SiteController extends BaseController
         }
         $kv = parse_kv_output($result['output']);
         return [
-            'engine'           => 'redis',
+            'engine'           => $kv['engine'] ?? cache_engine(),
             'service_ok'       => ($kv['service_ok'] ?? '0') === '1',
             'redis_host'       => $kv['redis_host'] ?? '127.0.0.1',
             'redis_port'       => $kv['redis_port'] ?? '6379',

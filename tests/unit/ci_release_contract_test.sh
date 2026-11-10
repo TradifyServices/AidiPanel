@@ -63,12 +63,12 @@ require 'npm ci' 'CI installs the exact frontend lockfile'
 require 'npm run build' 'CI rebuilds generated frontend assets'
 require 'git diff --exit-code -- panel-app/public/assets' 'CI rejects stale generated assets'
 require 'npm audit --audit-level=high' 'CI checks build-time and runtime dependency advisories'
-require_count 'actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0' 5 \
-  'every checkout step uses the immutable Node 24 v7.0.0 release'
-require_count 'actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0' 1 \
-  'frontend setup uses the immutable Node 24 v7.0.0 release'
-require_count 'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1' 1 \
-  'release upload uses the immutable Node 24 v7.0.1 release'
+require_count 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1' 5 \
+  'every checkout step uses the immutable v7.0.1 release'
+require_count 'actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0' 1 \
+  'frontend setup uses the immutable v7.1.0 release'
+require_count 'actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2' 1 \
+  'release upload uses the immutable v7.0.2 release'
 reject 'actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5' \
   'deprecated Node 20 checkout pin is absent'
 reject 'actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020' \
@@ -90,7 +90,7 @@ require 'release-signing-public.pub' 'release publishes the public verification 
 require_signing_job 'name: Verify Release Signing' 'CI has a dedicated release-signing integration job'
 require_signing_job 'runs-on: windows-latest' 'release-signing integration runs in its native Windows environment'
 require_signing_job 'contents: read' 'release-signing integration has read-only repository permission'
-require_signing_job 'actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0' 'release-signing checkout is immutable'
+require_signing_job 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1' 'release-signing checkout is immutable'
 require_signing_job 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/integration/release_signing_test.ps1' \
   'CI executes the complete release-signing integration test'
 forbid_signing_job 'GH_TOKEN' 'release-signing integration receives no GitHub publication token'

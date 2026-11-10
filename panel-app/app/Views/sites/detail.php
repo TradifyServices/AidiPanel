@@ -84,6 +84,7 @@ $tabs = [
     'files'       => ['icon' => 'ti-folder',        'label' => t('site.tab.files')],
     'sftp'        => ['icon' => 'ti-key',           'label' => t('site.tab.sftp')],
     'backup'      => ['icon' => 'ti-database-export', 'label' => t('site.tab.backup')],
+    'containers'  => ['icon' => 'ti-box', 'label' => t('docker.containers')],
     'settings'    => ['icon' => 'ti-settings',      'label' => t('site.tab.settings')],
 ];
 
@@ -1196,6 +1197,9 @@ $tabs = [
 
 <?php elseif ($activeTab === 'backup'): ?>
 <?php require __DIR__ . '/backup.php'; ?>
+
+<?php elseif ($activeTab === 'containers'): ?>
+  <?php require APP_ROOT . '/Views/docker/controls.php'; ?>
 
 <?php elseif ($activeTab === 'settings'): ?>
 <!-- ─────────────────────────── SETTINGS ─────────────────────────────────── -->

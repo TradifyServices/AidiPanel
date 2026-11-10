@@ -39,6 +39,8 @@ final class RoutePolicy
             '/admin/web-delivery', '/admin/settings', '/admin/settings/domain', '/admin/settings/domain/clear',
             '/admin/backups', '/admin/backups/test', '/admin/backups/destination',
             '/admin/backups/policy', '/admin/backups/run',
+            '/admin/docker', '/admin/docker/logs', '/admin/docker/{operation}',
+            '/sites/{domain}/containers/enable', '/sites/{domain}/containers/disable',
             '/sites/{domain}/nginx',
             '/users', '/services', '/logs',
             '/api/services',
@@ -79,6 +81,8 @@ final class RoutePolicy
     {
         return ($method === 'POST' && $routePath !== '/api/cli')
             || $routePath === '/sites/{domain}/backups/download'
+            || $routePath === '/admin/docker/logs'
+            || $routePath === '/sites/{domain}/containers/logs'
             || $routePath === '/sites/{domain}/nginx';
     }
 }

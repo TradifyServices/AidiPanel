@@ -10,6 +10,7 @@ $svcLabel = static function (string $unit): string {
         'nginx'            => t('svc.name_nginx'),
         'mysql', 'mariadb' => t('svc.name_database'),
         'redis-server'     => t('svc.name_redis'),
+        'valkey-server'    => t('svc.name_valkey'),
         default            => $unit,
     };
 };
@@ -19,7 +20,7 @@ $svcIcon = static function (string $unit): array {
     return match ($unit) {
         'nginx'            => ['ti-server',   'bg-emerald-50', 'text-emerald-600'],
         'mysql', 'mariadb' => ['ti-database', 'bg-amber-50',   'text-amber-600'],
-        'redis-server'     => ['ti-database', 'bg-red-50',     'text-red-500'],
+        'redis-server', 'valkey-server' => ['ti-database', 'bg-red-50', 'text-red-500'],
         default            => ['ti-settings', 'bg-zinc-100',   'text-zinc-500'],
     };
 };

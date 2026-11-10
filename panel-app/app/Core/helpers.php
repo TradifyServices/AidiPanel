@@ -315,6 +315,8 @@ function web_cli_allowed_commands(): array
         'remote-backup:status', 'remote-backup:test', 'remote-backup:save-destination',
         'remote-backup:save-policy', 'remote-backup:run',
         'web-delivery:status',
+        'docker:status', 'docker:list', 'docker:create', 'docker:start', 'docker:stop',
+        'docker:restart', 'docker:remove', 'docker:logs', 'docker:enable', 'docker:disable',
         'sftp:status', 'sftp:enable', 'sftp:disable', 'sftp:passwd', 'sftp:passwd-clear', 'sftp:key-add', 'sftp:key-delete',
         'system:cloud-metadata', 'system:info',
     ];
@@ -425,6 +427,15 @@ function is_web_cli_invocation_allowed(string $command, array $args): bool
 
     if ($command === 'web-delivery:status') {
         return $args === [];
+    }
+
+    if (str_starts_with($command, 'docker:')) {
+        if ($args === []) {
+            return !in_array($command, ['docker:enable', 'docker:disable'], true);
+        }
+        return count($args) === 2
+            && ($args[0] ?? null) === '--domain'
+            && is_valid_domain((string) ($args[1] ?? ''));
     }
 
     if (str_starts_with($command, 'remote-backup:')) {
@@ -646,6 +657,21 @@ function php_versions_status(): array
         ];
     }
     return $out;
+}
+
+function cache_engine(string $configurationPath = '/opt/aidipanel/config/panel.conf'): string
+{
+    $configuration = is_readable($configurationPath)
+        ? @parse_ini_file($configurationPath, false, INI_SCANNER_RAW) : [];
+    if ($configuration === false) return 'none';
+    $engine = $configuration['CACHE_ENGINE'] ?? (($configuration['INSTALL_REDIS'] ?? 'true') === 'false' ? 'none' : 'redis');
+    return in_array($engine, ['redis', 'valkey', 'none'], true) ? $engine : 'none';
+}
+
+function cache_service(string $configurationPath = '/opt/aidipanel/config/panel.conf'): ?string
+{
+    $engine = cache_engine($configurationPath);
+    return $engine === 'none' ? null : "{$engine}-server";
 }
 
 /**

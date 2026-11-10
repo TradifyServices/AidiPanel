@@ -45,6 +45,32 @@ part of the release application tree.
 - Runs as the dedicated `aidipanel` user through `aidipanel-fpm`
 - Served by Nginx on port 8443 by default
 
+## Frontend Build
+
+Use Node.js 24.15 or newer with npm:
+
+```bash
+npm ci
+npm run build
+npm test
+npm audit --audit-level=high
+```
+
+Tailwind CSS 4 is built locally; the CodeMirror 6 editor and its languages are
+bundled for offline use. Deployment serves the generated files in
+`public/assets/`; Node.js is not needed on the panel server. Regenerate and
+include the assets with frontend source/dependency updates. Vendored runtime
+license notices are included in `public/assets/vendor/THIRD-PARTY-LICENSES.txt`.
+Tailwind 4 targets modern browsers; review its
+[browser compatibility requirements](https://tailwindcss.com/docs/compatibility)
+before deploying to users who need legacy browser support.
+
+ApexCharts is deliberately pinned to the existing MIT-licensed 4.7.0 release.
+The current 8.8.1 release requires an OEM license for embedding in a product used
+by others; updating that dependency requires appropriate licensing or a separate
+chart-library migration. Other packages target the stable releases verified at
+the time of the update, not automatic unreviewed upgrades.
+
 ## Admin Password
 
 Generated randomly on the initial installation and saved to

@@ -13,7 +13,6 @@
  * a literal token somewhere in these files.
  */
 module.exports = {
-  content: ['./app/**/*.php', './public/**/*.php'],
   theme: {
     extend: {
       colors: {
