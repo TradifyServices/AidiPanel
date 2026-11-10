@@ -32,7 +32,12 @@ sudo apt upgrade -y
 ```
 
 If the upgrade creates `/var/run/reboot-required`, run `sudo reboot`, reconnect,
-and only then start the AidiPanel installer:
+and only then start the AidiPanel installer. The public download currently
+installs **v1.3.3**, not the v1.4.0 code described on this branch. The v1.4.0
+cache and Docker setup options require a signed v1.4.0 release; pushing this
+branch does not publish one.
+
+For the latest published release:
 
 ```bash
 curl -fsSL https://get.aidipanel.com | sudo bash
@@ -57,15 +62,20 @@ openssl pkey -pubin -in release-signing-public.pub -outform DER | sha256sum
 openssl dgst -sha256 -verify release-signing-public.pub \
   -signature SHA256SUMS.sig SHA256SUMS
 grep ' install-aidipanel.sh$' SHA256SUMS | sha256sum -c -
-sudo bash install-aidipanel.sh
 ```
 
 The public-key fingerprint must be
-`63cd4bf5ed9f184c9042977cec91e25d0928cc361c4e54bfb496d31f74f4d901`. Confirm it independently at
-`https://aidipanel.com/security` or through the published AidiPanel DNS record;
-the copy downloaded from the same release is not an independent trust anchor.
+`63cd4bf5ed9f184c9042977cec91e25d0928cc361c4e54bfb496d31f74f4d901`. Confirm it
+with the maintainers through an independently authenticated channel; the copy
+downloaded from the same release is not an independent trust anchor.
 Continue only when OpenSSL prints `Verified OK` and the checksum prints
 `install-aidipanel.sh: OK`.
+
+After verifying the fingerprint, signature, and checksum, run:
+
+```bash
+sudo bash install-aidipanel.sh
+```
 
 Use a fresh, dedicated VPS: the installer provisions the system web/database stack and is not intended to adopt an existing production server.
 
@@ -140,9 +150,10 @@ Architecture: x86_64 and aarch64.
 --dry-run             Simulate without making changes
 ```
 
-Interactive setup asks about the cache engine and Docker unless their flags were
-supplied. For an unattended Valkey/Docker installation, download and verify the
-installer as above, then run:
+In v1.4.0, interactive setup asks about the cache engine and Docker unless their
+flags were supplied. Once the signed v1.4.0 release is published, for an
+unattended Valkey/Docker installation, download and verify its installer as
+above, then run:
 
 ```bash
 sudo bash install-aidipanel.sh --cache-engine valkey --with-docker
