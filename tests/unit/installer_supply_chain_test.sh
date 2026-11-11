@@ -17,6 +17,7 @@ reject() {
 }
 
 require "$INSTALLER" 'releases/latest/download' 'standalone installer downloads stable release assets'
+require "$INSTALLER" 'https://github.com/TradifyServices/AidiPanel/releases/latest/download' 'installer targets the release repository'
 require "$INSTALLER" '_download_release_asset "aidipanel"' 'CLI fallback uses the verified release downloader'
 require "$INSTALLER" '_download_release_asset "aidipanel-panel-app.tar.gz"' 'panel fallback uses the verified release downloader'
 require "$INSTALLER" 'sha256sum -c -' 'release assets are checksum-verified'

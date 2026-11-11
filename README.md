@@ -32,31 +32,29 @@ sudo apt upgrade -y
 ```
 
 If the upgrade creates `/var/run/reboot-required`, run `sudo reboot`, reconnect,
-and only then start the AidiPanel installer. The public download currently
-installs **v1.3.3**, not the v1.4.0 code described on this branch. The v1.4.0
-cache and Docker setup options require a signed v1.4.0 release; pushing this
-branch does not publish one.
+and only then start the AidiPanel installer. A signed release must first be
+published in `TradifyServices/AidiPanel`; pushing this branch does not publish
+one. Until then, the commands below cannot download the release.
 
 For the latest published release:
 
 ```bash
-curl -fsSL https://get.aidipanel.com | sudo bash
+curl -fsSL https://github.com/TradifyServices/AidiPanel/releases/latest/download/install-aidipanel.sh | sudo bash
 ```
 
 The installer deploys the full stack and web panel. A random admin password is printed at the end and saved to `/opt/aidipanel/credentials.conf`.
 
 ### Verify before running (recommended)
 
-`get.aidipanel.com` redirects to the latest release installer. The quick command
-uses HTTPS to bootstrap the installer; once running, the installer verifies the
+The quick command uses HTTPS to bootstrap the installer; once running, it verifies the
 signed CLI and panel release before deploying them. For release authentication
 before any script runs as root, download and verify all release metadata:
 
 ```bash
-curl -fLO https://github.com/rezzaidr/AidiPanel/releases/latest/download/install-aidipanel.sh
-curl -fLO https://github.com/rezzaidr/AidiPanel/releases/latest/download/SHA256SUMS
-curl -fLO https://github.com/rezzaidr/AidiPanel/releases/latest/download/SHA256SUMS.sig
-curl -fLO https://github.com/rezzaidr/AidiPanel/releases/latest/download/release-signing-public.pub
+curl -fLO https://github.com/TradifyServices/AidiPanel/releases/latest/download/install-aidipanel.sh
+curl -fLO https://github.com/TradifyServices/AidiPanel/releases/latest/download/SHA256SUMS
+curl -fLO https://github.com/TradifyServices/AidiPanel/releases/latest/download/SHA256SUMS.sig
+curl -fLO https://github.com/TradifyServices/AidiPanel/releases/latest/download/release-signing-public.pub
 
 openssl pkey -pubin -in release-signing-public.pub -outform DER | sha256sum
 openssl dgst -sha256 -verify release-signing-public.pub \

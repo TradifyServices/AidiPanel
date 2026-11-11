@@ -95,22 +95,11 @@ jobs:
       - name: Reject stale generated assets
         run: git diff --exit-code -- panel-app/public/assets
 
-  release-signing:
-    name: Verify Release Signing
-    runs-on: windows-latest
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Test offline release-signing workflow
-        run: powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/integration/release_signing_test.ps1
-
   release:
-    name: Prepare Draft Release
+    name: Sign and Publish Release
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [lint-installer, lint-php, frontend, release-signing]
+    needs: [lint-installer, lint-php, frontend]
     permissions:
       contents: write
     steps:
@@ -146,6 +135,11 @@ jobs:
             SHA256SUMS
             config/release-signing-public.pub
 
+      - name: Sign release manifest
+        env:
+          RELEASE_SIGNING_PRIVATE_KEY: ${{ secrets.RELEASE_SIGNING_PRIVATE_KEY }}
+        run: bash tools/release/sign-manifest.sh SHA256SUMS config/release-signing-public.pub SHA256SUMS.sig
+
       - name: Create draft GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -153,15 +147,28 @@ jobs:
           flags=(--verify-tag --generate-notes --title "$GITHUB_REF_NAME")
           [[ "$GITHUB_REF_NAME" == *-* ]] && flags+=(--prerelease)
 
-          if state=$(gh release view "$GITHUB_REF_NAME" --json isDraft --jq .isDraft 2>/dev/null); then
-            [[ "$state" == true ]] || { echo "Release already published; refusing upload." >&2; exit 1; }
-          else
-            gh release create "$GITHUB_REF_NAME" "${flags[@]}" --draft
-          fi
+          gh release create "$GITHUB_REF_NAME" "${flags[@]}" --draft
 
           gh release upload "$GITHUB_REF_NAME" \
             install-aidipanel.sh \
             aidipanel \
             aidipanel-panel-app.tar.gz \
             SHA256SUMS \
+            SHA256SUMS.sig \
             config/release-signing-public.pub
+
+      - name: Verify uploaded assets and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir release-check
+          gh release download "$GITHUB_REF_NAME" --dir release-check
+          for asset in install-aidipanel.sh aidipanel aidipanel-panel-app.tar.gz SHA256SUMS SHA256SUMS.sig; do
+            cmp "$asset" "release-check/$asset"
+          done
+          cmp config/release-signing-public.pub release-check/release-signing-public.pub
+          openssl dgst -sha256 -verify config/release-signing-public.pub -signature release-check/SHA256SUMS.sig release-check/SHA256SUMS
+          (cd release-check && sha256sum -c SHA256SUMS)
+          remote_commit=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_REF_NAME" --jq .sha)
+          [[ "$remote_commit" == "$GITHUB_SHA" ]] || { echo 'Release tag changed during the workflow.' >&2; exit 1; }
+          gh release edit "$GITHUB_REF_NAME" --draft=false

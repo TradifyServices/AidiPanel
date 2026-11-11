@@ -17,6 +17,7 @@ reject() {
 }
 
 require 'releases/latest/download/aidipanel' 'self-update uses a release asset'
+require 'https://github.com/TradifyServices/AidiPanel/releases/latest/download/aidipanel' 'self-update targets the release repository'
 require 'releases/latest/download/SHA256SUMS' 'self-update downloads checksums'
 require 'SHA256SUMS.sig' 'self-update downloads the detached signature'
 require '_release_manifest_verify' 'self-update authenticates the checksum manifest'

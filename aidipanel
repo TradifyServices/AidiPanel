@@ -10481,10 +10481,10 @@ _release_version_is_downgrade() {
 _self_update() {
   _require_root "self:update"
   log "Checking for AidiPanel release updates..."
-  local install_url="https://github.com/rezzaidr/AidiPanel/releases/latest/download/aidipanel"
-  local panel_url="https://github.com/rezzaidr/AidiPanel/releases/latest/download/aidipanel-panel-app.tar.gz"
-  local checksum_url="https://github.com/rezzaidr/AidiPanel/releases/latest/download/SHA256SUMS"
-  local signature_url="https://github.com/rezzaidr/AidiPanel/releases/latest/download/SHA256SUMS.sig"
+  local install_url="https://github.com/TradifyServices/AidiPanel/releases/latest/download/aidipanel"
+  local panel_url="https://github.com/TradifyServices/AidiPanel/releases/latest/download/aidipanel-panel-app.tar.gz"
+  local checksum_url="https://github.com/TradifyServices/AidiPanel/releases/latest/download/SHA256SUMS"
+  local signature_url="https://github.com/TradifyServices/AidiPanel/releases/latest/download/SHA256SUMS.sig"
   # Optional root-owned overrides are parsed as inert values, never sourced.
   if [[ -r /etc/aidipanel/update.conf ]]; then
     local configured_url configured_panel configured_checksum configured_signature

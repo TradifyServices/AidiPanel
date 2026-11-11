@@ -5,7 +5,7 @@
 #  Supported OS: Debian 11/12, Ubuntu 22.04/24.04/26.04 (x86_64 & arm64)
 #
 #  Quick install (installs stack + deploys panel app automatically):
-#    curl -fsSL https://get.aidipanel.com | sudo bash
+#    curl -fsSL https://github.com/TradifyServices/AidiPanel/releases/latest/download/install-aidipanel.sh | sudo bash
 #
 #  Options:
 #    --port PORT           Panel HTTPS port (default: 8443)
@@ -1947,7 +1947,7 @@ _release_manifest_version() {
 _download_release_asset() (
   set -Eeuo pipefail
   local asset="$1" destination="$2"
-  local base="${AIDIPANEL_RELEASE_BASE:-https://github.com/rezzaidr/AidiPanel/releases/latest/download}"
+  local base="${AIDIPANEL_RELEASE_BASE:-https://github.com/TradifyServices/AidiPanel/releases/latest/download}"
   [[ "$base" == https://* ]] || die "AidiPanel release URL must use HTTPS."
   [[ "$asset" =~ ^[A-Za-z0-9._-]+$ ]] || die "Invalid AidiPanel release asset name."
 

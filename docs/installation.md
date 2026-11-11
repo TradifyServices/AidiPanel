@@ -31,15 +31,18 @@ server, and continue only after the reboot completes.
 
 On a fresh VPS:
 
+These commands require a signed release in `TradifyServices/AidiPanel`. The
+`get.aidipanel.com` redirect is separate and must be updated before it targets
+this repository.
+
 ```bash
-curl -fsSL https://get.aidipanel.com | sudo bash
+curl -fsSL https://github.com/TradifyServices/AidiPanel/releases/latest/download/install-aidipanel.sh | sudo bash
 ```
 
-`get.aidipanel.com` redirects to the installer from the latest stable GitHub
-release. To pass installer options through the pipe, use `bash -s --`:
+To pass installer options through the pipe, use `bash -s --`:
 
 ```bash
-curl -fsSL https://get.aidipanel.com | sudo bash -s -- --db-engine mysql84 --port 9443
+curl -fsSL https://github.com/TradifyServices/AidiPanel/releases/latest/download/install-aidipanel.sh | sudo bash -s -- --db-engine mysql84 --port 9443
 ```
 
 ## Verify Before Running (recommended)
@@ -49,25 +52,26 @@ then verifies the signed CLI and panel artifacts, but the following path also
 authenticates the installer before it is executed as root:
 
 ```bash
-curl -fLO https://github.com/rezzaidr/AidiPanel/releases/latest/download/install-aidipanel.sh
-curl -fLO https://github.com/rezzaidr/AidiPanel/releases/latest/download/SHA256SUMS
-curl -fLO https://github.com/rezzaidr/AidiPanel/releases/latest/download/SHA256SUMS.sig
-curl -fLO https://github.com/rezzaidr/AidiPanel/releases/latest/download/release-signing-public.pub
+curl -fLO https://github.com/TradifyServices/AidiPanel/releases/latest/download/install-aidipanel.sh
+curl -fLO https://github.com/TradifyServices/AidiPanel/releases/latest/download/SHA256SUMS
+curl -fLO https://github.com/TradifyServices/AidiPanel/releases/latest/download/SHA256SUMS.sig
+curl -fLO https://github.com/TradifyServices/AidiPanel/releases/latest/download/release-signing-public.pub
 
 openssl pkey -pubin -in release-signing-public.pub -outform DER \
   | sha256sum
 openssl dgst -sha256 -verify release-signing-public.pub \
   -signature SHA256SUMS.sig SHA256SUMS
 grep ' install-aidipanel.sh$' SHA256SUMS | sha256sum -c -
-sudo bash install-aidipanel.sh
 ```
 
 The expected DER SHA-256 public-key fingerprint is
-`63cd4bf5ed9f184c9042977cec91e25d0928cc361c4e54bfb496d31f74f4d901`. Compare it with the independently
-published value at `https://aidipanel.com/security` or in the AidiPanel DNS
-record—not only with a key delivered by the same GitHub release. Continue only
+`63cd4bf5ed9f184c9042977cec91e25d0928cc361c4e54bfb496d31f74f4d901`. Confirm it with the maintainers
+through an independently authenticated channel—not only with a key delivered
+by the same GitHub release. Continue only
 when OpenSSL prints `Verified OK` and the checksum command prints
 `install-aidipanel.sh: OK`.
+
+After all checks succeed, run `sudo bash install-aidipanel.sh`.
 
 This installs the full stack and deploys the web panel automatically:
 

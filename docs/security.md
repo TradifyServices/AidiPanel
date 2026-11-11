@@ -64,7 +64,7 @@ If any check fails, the operation is refused and nothing is removed. This preven
 
 ## Release Authenticity
 
-- Release manifests are signed offline with ECDSA P-256. The installer and CLI
+- Release manifests are signed by GitHub Actions with ECDSA P-256. The installer and CLI
   pin the corresponding public key and verify `SHA256SUMS.sig` before trusting
   any release checksum.
 - `self:update` downloads and authenticates the manifest before executable

@@ -36,34 +36,12 @@ reject_regex() {
   printf 'ok: %s\n' "$label"
 }
 
-RELEASE_SIGNING_JOB=$(awk '
-  $0 == "  release-signing:" { capture=1 }
-  capture && $0 ~ /^  [A-Za-z0-9_-]+:$/ && $0 != "  release-signing:" { exit }
-  capture { print }
-' "$CI")
-
-require_signing_job() {
-  local pattern="$1" label="$2"
-  grep -Fq -- "$pattern" <<< "$RELEASE_SIGNING_JOB" \
-    || { printf 'FAIL: %s\n' "$label" >&2; exit 1; }
-  printf 'ok: %s\n' "$label"
-}
-
-forbid_signing_job() {
-  local pattern="$1" label="$2"
-  if grep -Fq -- "$pattern" <<< "$RELEASE_SIGNING_JOB"; then
-    printf 'FAIL: %s\n' "$label" >&2
-    exit 1
-  fi
-  printf 'ok: %s\n' "$label"
-}
-
 require 'for test in tests/unit/*.sh' 'CI runs every tracked shell contract'
 require 'npm ci' 'CI installs the exact frontend lockfile'
 require 'npm run build' 'CI rebuilds generated frontend assets'
 require 'git diff --exit-code -- panel-app/public/assets' 'CI rejects stale generated assets'
 require 'npm audit --audit-level=high' 'CI checks build-time and runtime dependency advisories'
-require_count 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1' 5 \
+require_count 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1' 4 \
   'every checkout step uses the immutable v7.0.1 release'
 require_count 'actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0' 1 \
   'frontend setup uses the immutable v7.1.0 release'
@@ -87,15 +65,11 @@ require 'SHA256SUMS' 'release upload includes the checksum manifest'
 require 'printf '\''# AIDIPANEL_RELEASE_VERSION=%s\n'\''' 'release manifest includes the signed version header'
 require 'gh release create "$GITHUB_REF_NAME" "${flags[@]}" --draft' 'CI creates an unpublished draft'
 require 'release-signing-public.pub' 'release publishes the public verification key'
-require_signing_job 'name: Verify Release Signing' 'CI has a dedicated release-signing integration job'
-require_signing_job 'runs-on: windows-latest' 'release-signing integration runs in its native Windows environment'
-require_signing_job 'contents: read' 'release-signing integration has read-only repository permission'
-require_signing_job 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1' 'release-signing checkout is immutable'
-require_signing_job 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/integration/release_signing_test.ps1' \
-  'CI executes the complete release-signing integration test'
-forbid_signing_job 'GH_TOKEN' 'release-signing integration receives no GitHub publication token'
-forbid_signing_job 'PRIVATE_KEY' 'release-signing integration receives no offline private key'
-require 'needs: [lint-installer, lint-php, frontend, release-signing]' \
-  'draft release creation depends on release-signing integration'
+require 'secrets.RELEASE_SIGNING_PRIVATE_KEY' 'release signing uses the configured secret'
+require 'tools/release/sign-manifest.sh' 'release manifest is signed'
+require 'gh release download "$GITHUB_REF_NAME" --dir release-check' 'uploaded assets are checked before publication'
+require '[[ "$remote_commit" == "$GITHUB_SHA" ]]' 'tag still points to the built commit'
+require 'gh release edit "$GITHUB_REF_NAME" --draft=false' 'verified release is published'
+require 'needs: [lint-installer, lint-php, frontend]' 'publication depends on CI checks'
 
 printf 'CI release contract passed\n'

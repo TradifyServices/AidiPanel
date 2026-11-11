@@ -37,8 +37,26 @@ require "$INSTALLER" 'SHA256SUMS.sig' 'installer requires the detached signature
 require "$CLI" 'SHA256SUMS.sig' 'self-update requires the detached signature'
 require "$CI" '# AIDIPANEL_RELEASE_VERSION=' 'release manifest binds the version'
 require "$CI" '--draft' 'CI creates draft releases only'
-reject "$CI" 'RELEASE_SIGNING_PRIVATE_KEY' 'CI has no private signing key'
-reject "$CI" 'openssl dgst -sha256 -sign' 'CI cannot sign releases'
+require "$CI" 'RELEASE_SIGNING_PRIVATE_KEY' 'CI receives signing key from a secret'
+require "$CI" 'tools/release/sign-manifest.sh' 'CI signs the release manifest'
+require "$CI" 'gh release edit "$GITHUB_REF_NAME" --draft=false' 'CI publishes the signed release'
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+openssl ecparam -name prime256v1 -genkey -noout -out "$tmp/key.pem"
+openssl pkey -in "$tmp/key.pem" -pubout -out "$tmp/public.pem"
+printf 'test manifest\n' > "$tmp/SHA256SUMS"
+RELEASE_SIGNING_PRIVATE_KEY=$(cat "$tmp/key.pem") bash "$ROOT/tools/release/sign-manifest.sh" "$tmp/SHA256SUMS" "$tmp/public.pem" "$tmp/signature"
+openssl dgst -sha256 -verify "$tmp/public.pem" -signature "$tmp/signature" "$tmp/SHA256SUMS" >/dev/null
+if RELEASE_SIGNING_PRIVATE_KEY=$(cat "$tmp/key.pem") bash "$ROOT/tools/release/sign-manifest.sh" "$tmp/SHA256SUMS" "$PUBLIC_KEY" "$tmp/bad-signature" 2>/dev/null; then
+  printf 'FAIL: mismatched private key accepted\n' >&2
+  exit 1
+fi
+[[ ! -e "$tmp/bad-signature" ]] || { printf 'FAIL: invalid signature retained\n' >&2; exit 1; }
+if RELEASE_SIGNING_PRIVATE_KEY=$(cat "$PUBLIC_KEY") bash "$ROOT/tools/release/sign-manifest.sh" "$tmp/SHA256SUMS" "$PUBLIC_KEY" "$tmp/public-signature" 2>/dev/null; then
+  printf 'FAIL: public key accepted as a private key\n' >&2
+  exit 1
+fi
 
 key_b64=$(base64 -w0 "$PUBLIC_KEY")
 installer_b64=$(sed -n 's/^readonly AIDIPANEL_RELEASE_PUBLIC_KEY_B64="\([^"]*\)"$/\1/p' "$INSTALLER")
