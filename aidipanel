@@ -16,7 +16,7 @@ IFS=$'\n\t'
 # CONSTANTS
 # ---------------------------------------------------------------------------
 readonly CLI_VERSION="1.4.0"
-readonly AIDIPANEL_RELEASE_PUBLIC_KEY_B64="LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KTUZrd0V3WUhLb1pJemowQ0FRWUlLb1pJemowREFRY0RRZ0FFbmVQeXBrYjhVSkZOOFppeDV1enhETVhITFJrTQpBZkFHK3pLQjlLUjQ0N25OMVkvMkRLT0drU0pBZ21DQkJUek9sdkdhTi9Sd28xQnpxTGY3Z0w2VU53PT0KLS0tLS1FTkQgUFVCTElDIEtFWS0tLS0tCg=="
+readonly AIDIPANEL_RELEASE_PUBLIC_KEY_B64="LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KTUZrd0V3WUhLb1pJemowQ0FRWUlLb1pJemowREFRY0RRZ0FFRlZUY3NuY24zaEJvSXcrMUE4ZTNaNitPcWxjSgpFZEJmSDNscVFMK1lRU2V3UXQzUHB6ZElWeEVjNFhYSUxpZ24xVGpCemtxb1h3UjJWSE9iR3YxZWhRPT0KLS0tLS1FTkQgUFVCTElDIEtFWS0tLS0tCg=="
 readonly PANEL_DIR="/opt/aidipanel"
 readonly HOME_BASE="/home"
 readonly RESERVED_SITE_USERS=(root www-data ubuntu debian nginx mysql mariadb postgres redis valkey aidipanel aidipanel-pma daemon bin sys sync games man lp mail news uucp proxy backup list irc gnats nobody systemd-network systemd-resolve)

@@ -65,7 +65,7 @@ grep ' install-aidipanel.sh$' SHA256SUMS | sha256sum -c -
 ```
 
 The expected DER SHA-256 public-key fingerprint is
-`63cd4bf5ed9f184c9042977cec91e25d0928cc361c4e54bfb496d31f74f4d901`. Confirm it with the maintainers
+`9ad53e6e45aab645afcdbb45e0d9aec506b9e237d8783fcedf3a389e6e25847d`. Confirm it with the maintainers
 through an independently authenticated channel—not only with a key delivered
 by the same GitHub release. Continue only
 when OpenSSL prints `Verified OK` and the checksum command prints

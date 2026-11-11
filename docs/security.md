@@ -73,7 +73,7 @@ If any check fails, the operation is refused and nothing is removed. This preven
   [verified installation path](installation.md#verify-before-running-recommended)
   authenticates the installer itself before root execution.
 - The public-key DER SHA-256 fingerprint is
-  `63cd4bf5ed9f184c9042977cec91e25d0928cc361c4e54bfb496d31f74f4d901` and must be checked through
+  `9ad53e6e45aab645afcdbb45e0d9aec506b9e237d8783fcedf3a389e6e25847d` and must be checked through
   an independent AidiPanel channel, not only against the key attached to the
   same release.
 

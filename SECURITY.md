@@ -22,7 +22,7 @@ then trust the asset checksums. There is no checksum-only fallback in
 The public-key DER SHA-256 fingerprint is:
 
 ```text
-63cd4bf5ed9f184c9042977cec91e25d0928cc361c4e54bfb496d31f74f4d901
+9ad53e6e45aab645afcdbb45e0d9aec506b9e237d8783fcedf3a389e6e25847d
 ```
 
 Confirm this value with the maintainers through an independently authenticated
@@ -51,6 +51,11 @@ draft, downloads and verifies its assets, and publishes it. A missing or wrong
 key fails the job without publication. If a run fails after creating a draft,
 inspect and remove that draft before retrying; the workflow refuses to overwrite
 an existing release. Existing published releases are never overwritten.
+
+This fork uses a different signing key from the original project. Existing
+installations that pin the original key will reject this fork's releases; they
+require a separately authenticated, manual trust migration. Do not bypass
+signature verification to perform that migration.
 
 The installer and updater use `TradifyServices/AidiPanel` releases. The
 `get.aidipanel.com` redirect must be updated separately before it can be used
